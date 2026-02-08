@@ -1,0 +1,45 @@
+{
+  "name": "@calltelemetry/cucm-mcp",
+  "version": "0.1.1",
+  "private": false,
+  "type": "module",
+  "description": "MCP server for CUCM tooling (DIME logs, syslog, packet capture)",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/calltelemetry/cucm-mcp.git"
+  },
+  "bin": {
+    "cucm-mcp": "dist/index.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "package.json"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "build": "tsc && node scripts/chmod-bin.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "yarn build && node --test test/*.test.js",
+    "prepack": "yarn test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "fast-xml-parser": "^4.5.3",
+    "ssh2": "^1.16.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.1.0",
+    "@types/ssh2": "^1.15.4",
+    "tsx": "^4.19.4",
+    "typescript": "^5.7.3"
+  }
+}

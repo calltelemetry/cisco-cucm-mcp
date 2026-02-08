@@ -1,0 +1,253 @@
+#!/usr/bin/env node
+
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+
+import {
+  listNodeServiceLogs,
+  selectLogs,
+  selectLogsMinutes,
+  getOneFile,
+  writeDownloadedFile,
+  type DimeAuth,
+} from "./dime.js";
+import { guessTimezoneString } from "./time.js";
+import { PacketCaptureManager, type SshAuth } from "./packetCapture.js";
+
+// Default to accepting self-signed/invalid certs (common on CUCM lab/dev).
+// Opt back into strict verification with CUCM_MCP_TLS_MODE=strict.
+const tlsMode = (process.env.CUCM_MCP_TLS_MODE || process.env.MCP_TLS_MODE || "").toLowerCase();
+const strictTls = tlsMode === "strict" || tlsMode === "verify";
+if (!strictTls && !process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+}
+
+const server = new McpServer({ name: "cucm", version: "0.1.0" });
+const captures = new PacketCaptureManager();
+
+const dimeAuthSchema = z
+  .object({
+    username: z.string().optional(),
+    password: z.string().optional(),
+  })
+  .optional();
+
+const sshAuthSchema = z
+  .object({
+    username: z.string().optional(),
+    password: z.string().optional(),
+  })
+  .optional();
+
+server.tool(
+  "guess_timezone_string",
+  "Build a best-effort DIME timezone string for selectLogFiles.",
+  {},
+  async () => ({
+    content: [{ type: "text", text: JSON.stringify({ timezone: guessTimezoneString(new Date()) }, null, 2) }],
+  })
+);
+
+server.tool(
+  "list_node_service_logs",
+  "List CUCM cluster nodes and their available service logs (DIME listNodeServiceLogs).",
+  {
+    host: z.string(),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+  },
+  async ({ host, port, auth }) => {
+    const result = await listNodeServiceLogs(host, auth as DimeAuth | undefined, port);
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+  }
+);
+
+server.tool(
+  "select_logs",
+  "List log/trace files using DIME selectLogFiles. Supports ServiceLogs and SystemLogs.",
+  {
+    host: z.string(),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    serviceLogs: z.array(z.string()).optional().describe("ServiceLogs selections"),
+    systemLogs: z.array(z.string()).optional().describe("SystemLogs selections"),
+    searchStr: z.string().optional().describe("Optional filename substring filter"),
+    fromDate: z.string(),
+    toDate: z.string(),
+    timezone: z.string(),
+  },
+  async ({ host, port, auth, serviceLogs, systemLogs, searchStr, fromDate, toDate, timezone }) => {
+    const result = await selectLogs(
+      host,
+      { serviceLogs, systemLogs, searchStr, fromDate, toDate, timezone },
+      auth as DimeAuth | undefined,
+      port
+    );
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+  }
+);
+
+server.tool(
+  "select_logs_minutes",
+  "Convenience wrapper: select logs using a minutes-back window.",
+  {
+    host: z.string(),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    minutesBack: z.number().int().min(1).max(60 * 24 * 30),
+    serviceLogs: z.array(z.string()).optional(),
+    systemLogs: z.array(z.string()).optional(),
+    searchStr: z.string().optional(),
+    timezone: z.string().optional(),
+  },
+  async ({ host, port, auth, minutesBack, serviceLogs, systemLogs, searchStr, timezone }) => {
+    const result = await selectLogsMinutes(
+      host,
+      minutesBack,
+      { serviceLogs, systemLogs, searchStr },
+      timezone,
+      auth as DimeAuth | undefined,
+      port
+    );
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+  }
+);
+
+server.tool(
+  "select_syslog_minutes",
+  "Convenience wrapper: select system log files (e.g. Syslog) using a minutes-back window.",
+  {
+    host: z.string(),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    minutesBack: z.number().int().min(1).max(60 * 24 * 30),
+    systemLog: z
+      .string()
+      .optional()
+      .describe("System log selection name. Default is 'Syslog' (may vary by CUCM version)."),
+    searchStr: z.string().optional(),
+    timezone: z.string().optional(),
+  },
+  async ({ host, port, auth, minutesBack, systemLog, searchStr, timezone }) => {
+    const result = await selectLogsMinutes(
+      host,
+      minutesBack,
+      { systemLogs: [systemLog || "Syslog"], searchStr },
+      timezone,
+      auth as DimeAuth | undefined,
+      port
+    );
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+  }
+);
+
+server.tool(
+  "download_file",
+  "Download a single file via DIME GetOneFile and write it to disk.",
+  {
+    host: z.string(),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    filePath: z.string().min(1).describe("Absolute path on CUCM"),
+    outFile: z.string().optional().describe("Optional output path. Default: /tmp/cucm-mcp/<basename>"),
+  },
+  async ({ host, port, auth, filePath, outFile }) => {
+    const dl = await getOneFile(host, filePath, auth as DimeAuth | undefined, port);
+    const saved = writeDownloadedFile(dl, outFile);
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ server: dl.server, sourcePath: dl.filename, savedPath: saved.filePath, bytes: saved.bytes }, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+server.tool(
+  "packet_capture_start",
+  "Start a packet capture on CUCM via SSH (utils network capture). Returns a captureId.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    sshPort: z.number().int().min(1).max(65535).optional(),
+    auth: sshAuthSchema,
+    iface: z.string().optional().describe("Interface (default eth0)"),
+    fileBase: z.string().optional().describe("Capture base name (no dots). Saved as <fileBase>.cap"),
+    count: z.number().int().min(1).max(200000).optional().describe("Packet count (file max is typically 100000)"),
+    size: z.string().optional().describe("Packet size (e.g. all)"),
+    hostFilterIp: z.string().optional().describe("Optional filter: host ip <addr>"),
+    portFilter: z.number().int().min(1).max(65535).optional().describe("Optional filter: port <num>"),
+  },
+  async ({ host, sshPort, auth, iface, fileBase, count, size, hostFilterIp, portFilter }) => {
+    const result = await captures.start({
+      host,
+      sshPort,
+      auth: auth as SshAuth | undefined,
+      iface,
+      fileBase,
+      count,
+      size,
+      hostFilterIp,
+      portFilter,
+    });
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+  }
+);
+
+server.tool(
+  "packet_capture_list",
+  "List active packet captures started by this MCP server.",
+  {},
+  async () => ({ content: [{ type: "text", text: JSON.stringify(captures.list(), null, 2) }] })
+);
+
+server.tool(
+  "packet_capture_stop",
+  "Stop a packet capture by captureId (sends Ctrl-C).",
+  {
+    captureId: z.string().min(1),
+  },
+  async ({ captureId }) => {
+    const result = await captures.stop(captureId);
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+  }
+);
+
+server.tool(
+  "packet_capture_stop_and_download",
+  "Stop a packet capture and download the resulting .cap file via DIME.",
+  {
+    captureId: z.string().min(1),
+    dimePort: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema.describe("DIME auth (optional; defaults to CUCM_DIME_USERNAME/CUCM_DIME_PASSWORD)"),
+    outFile: z.string().optional().describe("Optional output path for the downloaded .cap file"),
+  },
+  async ({ captureId, dimePort, auth, outFile }) => {
+    const stopped = await captures.stop(captureId);
+    const dl = await getOneFile(stopped.host, stopped.remoteFilePath, auth as DimeAuth | undefined, dimePort);
+    const saved = writeDownloadedFile(dl, outFile);
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              captureId: stopped.id,
+              host: stopped.host,
+              remoteFilePath: stopped.remoteFilePath,
+              savedPath: saved.filePath,
+              bytes: saved.bytes,
+            },
+            null,
+            2
+          ),
+        },
+      ],
+    };
+  }
+);
+
+const transport = new StdioServerTransport();
+await server.connect(transport);
