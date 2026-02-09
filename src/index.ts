@@ -15,6 +15,7 @@ import {
 } from "./dime.js";
 import { guessTimezoneString } from "./time.js";
 import { PacketCaptureManager, type SshAuth } from "./packetCapture.js";
+import { defaultStateStore } from "./state.js";
 
 // Default to accepting self-signed/invalid certs (common on CUCM lab/dev).
 // Opt back into strict verification with CUCM_MCP_TLS_MODE=strict.
@@ -24,8 +25,9 @@ const strictTls = tlsMode === "strict" || tlsMode === "verify";
 // Set CUCM_MCP_TLS_MODE=strict to enforce verification.
 if (!strictTls) process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
-const server = new McpServer({ name: "cucm", version: "0.1.0" });
+const server = new McpServer({ name: "cucm", version: "0.1.3" });
 const captures = new PacketCaptureManager();
+const captureState = defaultStateStore();
 
 const dimeAuthSchema = z
   .object({
@@ -205,6 +207,53 @@ server.tool(
 );
 
 server.tool(
+  "packet_capture_state_list",
+  "List packet captures from the local state file (survives MCP restarts).",
+  {},
+  async () => {
+    const pruned = captureState.pruneExpired(captureState.load());
+    captureState.save(pruned);
+    const items = Object.values(pruned.captures).sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+    return { content: [{ type: "text", text: JSON.stringify({ path: captureState.path, captures: items }, null, 2) }] };
+  }
+);
+
+server.tool(
+  "packet_capture_state_get",
+  "Get a packet capture record from the local state file.",
+  {
+    captureId: z.string().min(1),
+  },
+  async ({ captureId }) => {
+    const pruned = captureState.pruneExpired(captureState.load());
+    const rec = pruned.captures[captureId];
+    if (!rec) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({ path: captureState.path, found: false, captureId }, null, 2),
+          },
+        ],
+      };
+    }
+    return { content: [{ type: "text", text: JSON.stringify({ path: captureState.path, found: true, record: rec }, null, 2) }] };
+  }
+);
+
+server.tool(
+  "packet_capture_state_clear",
+  "Delete a capture record from the local state file.",
+  {
+    captureId: z.string().min(1),
+  },
+  async ({ captureId }) => {
+    captureState.remove(captureId);
+    return { content: [{ type: "text", text: JSON.stringify({ removed: true, captureId }, null, 2) }] };
+  }
+);
+
+server.tool(
   "packet_capture_stop",
   "Stop a packet capture by captureId (sends Ctrl-C).",
   {
@@ -264,6 +313,64 @@ server.tool(
               host: stopped.host,
               remoteFilePath: dl.filename,
               stopTimedOut: stopped.stopTimedOut || false,
+              savedPath: saved.filePath,
+              bytes: saved.bytes,
+              dimeAttempts: dl.attempts,
+              dimeWaitedMs: dl.waitedMs,
+            },
+            null,
+            2
+          ),
+        },
+      ],
+    };
+  }
+);
+
+server.tool(
+  "packet_capture_download_from_state",
+  "Download a capture file using the local state record (useful after MCP restart).",
+  {
+    captureId: z.string().min(1),
+    dimePort: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema.describe("DIME auth (optional; defaults to CUCM_DIME_USERNAME/CUCM_DIME_PASSWORD)"),
+    outFile: z.string().optional().describe("Optional output path for the downloaded .cap file"),
+    downloadTimeoutMs: z
+      .number()
+      .int()
+      .min(1000)
+      .max(10 * 60_000)
+      .optional()
+      .describe("How long to wait for the capture file to appear in DIME"),
+    downloadPollIntervalMs: z
+      .number()
+      .int()
+      .min(250)
+      .max(30_000)
+      .optional()
+      .describe("How often to retry DIME GetOneFile when the file isn't there yet"),
+  },
+  async ({ captureId, dimePort, auth, outFile, downloadTimeoutMs, downloadPollIntervalMs }) => {
+    const pruned = captureState.pruneExpired(captureState.load());
+    const rec = pruned.captures[captureId];
+    if (!rec) throw new Error(`Capture not found in state: ${captureId}`);
+
+    const dl = await getOneFileAnyWithRetry(rec.host, rec.remoteFileCandidates?.length ? rec.remoteFileCandidates : [rec.remoteFilePath], {
+      auth: auth as DimeAuth | undefined,
+      port: dimePort,
+      timeoutMs: downloadTimeoutMs,
+      pollIntervalMs: downloadPollIntervalMs,
+    });
+    const saved = writeDownloadedFile(dl, outFile);
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              captureId,
+              host: rec.host,
+              remoteFilePath: dl.filename,
               savedPath: saved.filePath,
               bytes: saved.bytes,
               dimeAttempts: dl.attempts,

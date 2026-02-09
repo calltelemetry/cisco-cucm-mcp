@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
 import { Client, type ClientChannel } from "ssh2";
 
+import { defaultStateStore, type CaptureStateStore } from "./state.js";
+
 export type SshAuth = { username?: string; password?: string };
 
 export type PacketCaptureStart = {
@@ -139,6 +141,11 @@ type Active = {
 
 export class PacketCaptureManager {
   private active = new Map<string, Active>();
+  private state: CaptureStateStore;
+
+  constructor(opts?: { state?: CaptureStateStore }) {
+    this.state = opts?.state || defaultStateStore();
+  }
 
   list(): PacketCaptureSession[] {
     return [...this.active.values()].map((a) => a.session);
@@ -167,6 +174,12 @@ export class PacketCaptureManager {
       remoteFileCandidates: remoteCaptureCandidates(fileBase),
     };
 
+    // Persist early so we can recover/download even if the MCP process restarts.
+    this.state.upsert({
+      ...session,
+      stoppedAt: session.stoppedAt,
+    });
+
     await new Promise<void>((resolve, reject) => {
       client
         .on("ready", () => resolve())
@@ -189,16 +202,21 @@ export class PacketCaptureManager {
 
     channel.on("data", (buf: Buffer) => {
       session.lastStdout = buf.toString("utf8").slice(-2000);
+      this.state.upsert({ ...session, stoppedAt: session.stoppedAt });
     });
     channel.stderr.on("data", (buf: Buffer) => {
       session.lastStderr = buf.toString("utf8").slice(-2000);
+      this.state.upsert({ ...session, stoppedAt: session.stoppedAt });
     });
     channel.on("close", (code: number | null) => {
       session.exitCode = code;
+      session.stoppedAt = session.stoppedAt || new Date().toISOString();
       // If the capture stopped unexpectedly, drop it from the active map.
       this.active.delete(id);
+      this.state.upsert({ ...session, stoppedAt: session.stoppedAt });
       try {
         client.end();
+        client.destroy();
       } catch {
         // ignore
       }
@@ -277,17 +295,25 @@ export class PacketCaptureManager {
     })();
 
     try {
-      await Promise.race([
-        done,
-        new Promise<void>((_, reject) =>
-          setTimeout(() => reject(new Error("Timeout waiting for capture to stop")), resolvedTimeoutMs)
-        ),
-      ]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<void>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("Timeout waiting for capture to stop")), resolvedTimeoutMs);
+      // Don't keep the process alive just because we're waiting.
+      (timer as any).unref?.();
+    });
+
+    try {
+      await Promise.race([done, timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
     } catch (e) {
       // Don't hard-fail: if the CLI doesn't emit a prompt/exit, we still want to:
       // - close SSH resources
       // - let the caller try DIME downloads (.cap, .cap01, etc)
       session.stopTimedOut = true;
+      session.stoppedAt = session.stoppedAt || new Date().toISOString();
+      this.state.upsert({ ...session, stoppedAt: session.stoppedAt });
       try {
         channel.close();
       } catch {
@@ -296,6 +322,7 @@ export class PacketCaptureManager {
     }
 
     session.stoppedAt = new Date().toISOString();
+    this.state.upsert({ ...session, stoppedAt: session.stoppedAt });
 
     // If we're back at a CUCM prompt, try to close the session cleanly.
     if (looksLikeCucmPrompt(session.lastStdout) || looksLikeCucmPrompt(session.lastStderr)) {
@@ -328,10 +355,13 @@ export class PacketCaptureManager {
       }
     }
 
+    this.state.upsert({ ...session, stoppedAt: session.stoppedAt });
+
     // stop() implies cleanup
     this.active.delete(captureId);
     try {
       client.end();
+      client.destroy();
     } catch {
       // ignore
     }

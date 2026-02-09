@@ -2,3 +2,4 @@ dist/
 node_modules/
 .yarn/
 .DS_Store
+.cucm-mcp-state.json

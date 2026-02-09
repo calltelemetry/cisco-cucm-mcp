@@ -30,6 +30,14 @@ CUCM lab environments often use self-signed certificates. By default this server
 
 - `CUCM_MCP_TLS_MODE=strict` (or `MCP_TLS_MODE=strict`)
 
+### Local State (Capture Recovery)
+
+This server persists packet capture metadata to a local JSON file so you can recover/download captures after an MCP restart.
+
+- `CUCM_MCP_STATE_PATH` (default: `./.cucm-mcp-state.json`)
+- `CUCM_MCP_CAPTURE_RUNNING_TTL_MS` (default: 6 hours)
+- `CUCM_MCP_CAPTURE_STOPPED_TTL_MS` (default: 24 hours)
+
 ## Run
 
 ```bash
@@ -74,3 +82,5 @@ Live tests are opt-in via env vars; see `test/live.test.js`.
 - `select_syslog_minutes` - list recent system log files (defaults to `Syslog`)
 - `packet_capture_start` / `packet_capture_stop` - control captures via SSH
 - `packet_capture_stop_and_download` - stop capture + download `.cap` via DIME
+- `packet_capture_state_list` - list captures from state file
+- `packet_capture_download_from_state` - download by captureId after restart
