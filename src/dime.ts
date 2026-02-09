@@ -4,6 +4,12 @@ import { formatCucmDateTime, guessTimezoneString } from "./time.js";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
+// Default to accepting self-signed/invalid certs (common on CUCM lab/dev).
+// Opt back into strict verification with CUCM_MCP_TLS_MODE=strict.
+const tlsMode = (process.env.CUCM_MCP_TLS_MODE || process.env.MCP_TLS_MODE || "").toLowerCase();
+const strictTls = tlsMode === "strict" || tlsMode === "verify";
+if (!strictTls) process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
 export type DimeAuth = { username?: string; password?: string };
 
 export type DimeTarget = {
@@ -39,6 +45,21 @@ const parser = new XMLParser({
   removeNSPrefix: true,
   trimValues: true,
 });
+
+function isXmlContentType(contentType: string): boolean {
+  const ct = String(contentType || "").toLowerCase();
+  if (!ct) return false;
+  return ct === "text/xml" || ct === "application/xml" || ct === "application/soap+xml" || ct.endsWith("+xml") || ct.includes("/xml");
+}
+
+function dimeXmlBytes(contentType: string | null, bytes: Buffer): Buffer {
+  const boundary = extractBoundary(contentType);
+  if (!boundary) return bytes;
+  const parts = parseMultipartRelated(bytes, boundary);
+  const xmlParts = parts.filter((p) => isXmlContentType(p.contentType));
+  if (xmlParts.length === 0) throw new Error("DIME response missing text/xml part");
+  return xmlParts[0].body;
+}
 
 export function normalizeHost(hostOrUrl: string): string {
   const s = String(hostOrUrl || "").trim();
@@ -188,12 +209,8 @@ export async function listNodeServiceLogs(hostOrUrl: string, auth?: DimeAuth, po
     soapEnvelopeList()
   );
 
-  const boundary = extractBoundary(contentType);
-  const parts = parseMultipartRelated(bytes, boundary);
-  const xmlParts = parts.filter((p) => p.contentType.toLowerCase() === "text/xml");
-  if (xmlParts.length === 0) throw new Error("DIME response missing text/xml part");
-
-  const parsed = parser.parse(xmlParts[0].body.toString("utf8"));
+  const xml = dimeXmlBytes(contentType, bytes);
+  const parsed = parser.parse(xml.toString("utf8"));
   const env = parsed.Envelope || parsed;
   const body = env.Body || env;
   const resp = body.listNodeServiceLogsResponse;
@@ -239,12 +256,8 @@ export async function selectLogs(
     soapEnvelopeSelect(criteria)
   );
 
-  const boundary = extractBoundary(contentType);
-  const parts = parseMultipartRelated(bytes, boundary);
-  const xmlParts = parts.filter((p) => p.contentType.toLowerCase() === "text/xml");
-  if (xmlParts.length === 0) throw new Error("DIME response missing text/xml part");
-
-  const parsed = parser.parse(xmlParts[0].body.toString("utf8"));
+  const xml = dimeXmlBytes(contentType, bytes);
+  const parsed = parser.parse(xml.toString("utf8"));
   const env = parsed.Envelope || parsed;
   const body = env.Body || env;
   const resp = body.selectLogFilesResponse;
@@ -311,13 +324,101 @@ export async function getOneFile(
   );
 
   const boundary = extractBoundary(contentType);
+  if (!boundary) {
+    // Some environments respond with a non-multipart body. Prefer treating non-XML bodies as raw file bytes.
+    const ct = (contentType || "").toLowerCase();
+    if (ct.includes("text/xml") || ct.includes("application/soap+xml")) {
+      // Best-effort fault detection
+      const asText = bytes.toString("utf8");
+      if (/\bFault\b/i.test(asText)) throw new Error(`CUCM DIME GetOneFile returned SOAP fault: ${asText}`);
+      // If it's XML but not a fault, still return raw bytes.
+    }
+    return { server: target.host, filename: filePath, data: bytes };
+  }
+
   const parts = parseMultipartRelated(bytes, boundary);
   if (parts.length === 0) throw new Error("DIME GetOneFile returned no multipart parts");
 
-  const nonXml = parts.find((p) => p.contentType.toLowerCase() !== "text/xml");
+  const nonXml = parts.find((p) => !isXmlContentType(p.contentType));
   if (!nonXml) throw new Error("DIME GetOneFile response missing non-XML file part");
 
   return { server: target.host, filename: filePath, data: nonXml.body };
+}
+
+function isDimeMissingFileError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e || "");
+  // CUCM DIME commonly responds with HTTP 500 and a SOAP fault like:
+  //   "FileName ... do not exist"
+  return /DIME HTTP 500/i.test(msg) && /do not exist/i.test(msg);
+}
+
+export async function getOneFileWithRetry(
+  hostOrUrl: string,
+  filePath: string,
+  opts?: {
+    auth?: DimeAuth;
+    port?: number;
+    timeoutMs?: number;
+    pollIntervalMs?: number;
+  }
+): Promise<{ server: string; filename: string; data: Buffer; attempts: number; waitedMs: number }> {
+  const timeoutMs = Math.max(1000, opts?.timeoutMs ?? 120_000);
+  const pollIntervalMs = Math.max(250, opts?.pollIntervalMs ?? 2000);
+
+  const start = Date.now();
+  let attempts = 0;
+  // Simple fixed-interval poll; CUCM can take time to flush capture files to disk.
+  while (true) {
+    attempts++;
+    try {
+      const r = await getOneFile(hostOrUrl, filePath, opts?.auth, opts?.port);
+      return { ...r, attempts, waitedMs: Date.now() - start };
+    } catch (e) {
+      const elapsed = Date.now() - start;
+      if (!isDimeMissingFileError(e) || elapsed >= timeoutMs) throw e;
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+    }
+  }
+}
+
+export async function getOneFileAnyWithRetry(
+  hostOrUrl: string,
+  filePaths: string[],
+  opts?: {
+    auth?: DimeAuth;
+    port?: number;
+    timeoutMs?: number;
+    pollIntervalMs?: number;
+  }
+): Promise<{ server: string; filename: string; data: Buffer; attempts: number; waitedMs: number }> {
+  const paths = (filePaths || []).map(String).filter((p) => p.trim() !== "");
+  if (paths.length === 0) throw new Error("getOneFileAnyWithRetry requires at least one filePath");
+
+  const timeoutMs = Math.max(1000, opts?.timeoutMs ?? 120_000);
+  const pollIntervalMs = Math.max(250, opts?.pollIntervalMs ?? 2000);
+
+  const start = Date.now();
+  let attempts = 0;
+
+  while (true) {
+    attempts++;
+    for (const p of paths) {
+      try {
+        const r = await getOneFile(hostOrUrl, p, opts?.auth, opts?.port);
+        return { ...r, attempts, waitedMs: Date.now() - start };
+      } catch (e) {
+        if (!isDimeMissingFileError(e)) throw e;
+      }
+    }
+
+    const elapsed = Date.now() - start;
+    if (elapsed >= timeoutMs) {
+      // If timeout, throw the same missing-file style error for the first candidate.
+      throw new Error(`DIME HTTP 500: FileName ${paths[0]} do not exist (timed out after ${elapsed}ms)`);
+    }
+
+    await new Promise((r) => setTimeout(r, pollIntervalMs));
+  }
 }
 
 export function writeDownloadedFile(result: { server: string; filename: string; data: Buffer }, outFile?: string) {

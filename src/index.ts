@@ -9,6 +9,7 @@ import {
   selectLogs,
   selectLogsMinutes,
   getOneFile,
+  getOneFileAnyWithRetry,
   writeDownloadedFile,
   type DimeAuth,
 } from "./dime.js";
@@ -19,9 +20,9 @@ import { PacketCaptureManager, type SshAuth } from "./packetCapture.js";
 // Opt back into strict verification with CUCM_MCP_TLS_MODE=strict.
 const tlsMode = (process.env.CUCM_MCP_TLS_MODE || process.env.MCP_TLS_MODE || "").toLowerCase();
 const strictTls = tlsMode === "strict" || tlsMode === "verify";
-if (!strictTls && !process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-}
+// Default: permissive TLS (accept self-signed). This is the common CUCM lab posture.
+// Set CUCM_MCP_TLS_MODE=strict to enforce verification.
+if (!strictTls) process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 const server = new McpServer({ name: "cucm", version: "0.1.0" });
 const captures = new PacketCaptureManager();
@@ -208,9 +209,10 @@ server.tool(
   "Stop a packet capture by captureId (sends Ctrl-C).",
   {
     captureId: z.string().min(1),
+    timeoutMs: z.number().int().min(1000).max(10 * 60_000).optional().describe("How long to wait for stop (default ~90s)"),
   },
-  async ({ captureId }) => {
-    const result = await captures.stop(captureId);
+  async ({ captureId, timeoutMs }) => {
+    const result = await captures.stop(captureId, timeoutMs);
     return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
   }
 );
@@ -223,10 +225,34 @@ server.tool(
     dimePort: z.number().int().min(1).max(65535).optional(),
     auth: dimeAuthSchema.describe("DIME auth (optional; defaults to CUCM_DIME_USERNAME/CUCM_DIME_PASSWORD)"),
     outFile: z.string().optional().describe("Optional output path for the downloaded .cap file"),
+    stopTimeoutMs: z.number().int().min(1000).max(10 * 60_000).optional().describe("How long to wait for SSH capture stop"),
+    downloadTimeoutMs: z
+      .number()
+      .int()
+      .min(1000)
+      .max(10 * 60_000)
+      .optional()
+      .describe("How long to wait for the capture file to appear in DIME"),
+    downloadPollIntervalMs: z
+      .number()
+      .int()
+      .min(250)
+      .max(30_000)
+      .optional()
+      .describe("How often to retry DIME GetOneFile when the file isn't there yet"),
   },
-  async ({ captureId, dimePort, auth, outFile }) => {
-    const stopped = await captures.stop(captureId);
-    const dl = await getOneFile(stopped.host, stopped.remoteFilePath, auth as DimeAuth | undefined, dimePort);
+  async ({ captureId, dimePort, auth, outFile, stopTimeoutMs, downloadTimeoutMs, downloadPollIntervalMs }) => {
+    const stopped = await captures.stop(captureId, stopTimeoutMs);
+    const candidates = (stopped.remoteFileCandidates || []).length
+      ? stopped.remoteFileCandidates
+      : [stopped.remoteFilePath];
+
+    const dl = await getOneFileAnyWithRetry(stopped.host, candidates, {
+      auth: auth as DimeAuth | undefined,
+      port: dimePort,
+      timeoutMs: downloadTimeoutMs,
+      pollIntervalMs: downloadPollIntervalMs,
+    });
     const saved = writeDownloadedFile(dl, outFile);
     return {
       content: [
@@ -236,9 +262,12 @@ server.tool(
             {
               captureId: stopped.id,
               host: stopped.host,
-              remoteFilePath: stopped.remoteFilePath,
+              remoteFilePath: dl.filename,
+              stopTimedOut: stopped.stopTimedOut || false,
               savedPath: saved.filePath,
               bytes: saved.bytes,
+              dimeAttempts: dl.attempts,
+              dimeWaitedMs: dl.waitedMs,
             },
             null,
             2

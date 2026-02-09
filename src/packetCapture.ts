@@ -19,13 +19,36 @@ export type PacketCaptureSession = {
   id: string;
   host: string;
   startedAt: string;
+  stoppedAt?: string;
   iface: string;
   fileBase: string;
   remoteFilePath: string;
+  remoteFileCandidates: string[];
+  stopTimedOut?: boolean;
   lastStdout?: string;
   lastStderr?: string;
   exitCode?: number | null;
 };
+
+function extractCapFilePath(text?: string): string | undefined {
+  if (!text) return undefined;
+  // CUCM typically writes captures to /var/log/active/platform/cli/<name>.cap
+  // Sometimes CLI output includes the final on-disk location.
+  const re = /\/var\/log\/active\/platform\/cli\/[A-Za-z0-9._-]+\.cap/g;
+  const matches = text.match(re);
+  if (!matches || matches.length === 0) return undefined;
+  return matches[matches.length - 1];
+}
+
+function looksLikeCucmPrompt(text?: string): boolean {
+  const t = String(text || "");
+  // CUCM CLI commonly ends commands by printing a prompt like:
+  //   admin:
+  // Some environments might show other usernames.
+  // We only look at the tail to avoid false positives.
+  const tail = t.slice(-80);
+  return /(?:^|\n)[A-Za-z0-9_-]+:\s*$/.test(tail);
+}
 
 export function resolveSshAuth(auth?: SshAuth): Required<SshAuth> {
   const username = auth?.username || process.env.CUCM_SSH_USERNAME;
@@ -96,6 +119,18 @@ export function remoteCapturePath(fileBase: string): string {
   return `/var/log/active/platform/cli/${fb}.cap`;
 }
 
+export function remoteCaptureCandidates(fileBase: string, maxParts = 10): string[] {
+  const fb = sanitizeFileBase(fileBase);
+  const base = `/var/log/active/platform/cli/${fb}.cap`;
+  const out: string[] = [base];
+  // Some CUCM/VOS versions roll packet capture files as .cap01, .cap02, ...
+  for (let i = 1; i <= maxParts; i++) {
+    const suffix = String(i).padStart(2, "0");
+    out.push(`/var/log/active/platform/cli/${fb}.cap${suffix}`);
+  }
+  return out;
+}
+
 type Active = {
   session: PacketCaptureSession;
   client: Client;
@@ -129,6 +164,7 @@ export class PacketCaptureManager {
       iface,
       fileBase,
       remoteFilePath: remoteCapturePath(fileBase),
+      remoteFileCandidates: remoteCaptureCandidates(fileBase),
     };
 
     await new Promise<void>((resolve, reject) => {
@@ -172,31 +208,125 @@ export class PacketCaptureManager {
     return session;
   }
 
-  async stop(captureId: string, timeoutMs = 15000): Promise<PacketCaptureSession> {
+  async stop(captureId: string, timeoutMs = 90_000): Promise<PacketCaptureSession> {
     const a = this.active.get(captureId);
     if (!a) throw new Error(`Unknown captureId: ${captureId}`);
 
     const { channel, client, session } = a;
     const done = new Promise<void>((resolve) => {
-      channel.once("close", () => resolve());
+      // CUCM CLI can keep the SSH channel open after the command finishes
+      // (it returns to a prompt rather than exiting). Treat prompt as "stopped".
+      const onData = () => {
+        if (looksLikeCucmPrompt(session.lastStdout) || looksLikeCucmPrompt(session.lastStderr)) {
+          cleanup();
+          resolve();
+        }
+      };
+      const cleanup = () => {
+        channel.off("data", onData);
+        channel.stderr.off("data", onData);
+      };
+
+      const finish = () => {
+        cleanup();
+        resolve();
+      };
+
+      channel.once("exit", finish);
+      channel.once("close", finish);
+      channel.once("end", finish);
+      channel.on("data", onData);
+      channel.stderr.on("data", onData);
     });
 
-    // Best-effort interrupt.
-    try {
-      if (typeof (channel as any).signal === "function") (channel as any).signal("INT");
-      else channel.write("\x03");
-    } catch {
+    const sendInterrupt = () => {
+      // Best-effort interrupt.
       try {
+        if (typeof (channel as any).signal === "function") (channel as any).signal("INT");
+        // Always also write Ctrl-C for PTY sessions.
         channel.write("\x03");
+      } catch {
+        try {
+          channel.write("\x03");
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    // CUCM can take a while to flush/close captures (especially big buffers).
+    // Also, some CLI flows require a second Ctrl-C or a newline to return to prompt.
+    const resolvedTimeoutMs = Math.max(5000, timeoutMs || 0);
+    const deadline = Date.now() + resolvedTimeoutMs;
+    sendInterrupt();
+
+    // Nudge again a couple times if it doesn't exit quickly.
+    void (async () => {
+      const delays = [750, 1500, 3000];
+      for (const d of delays) {
+        await new Promise((r) => setTimeout(r, d));
+        if (Date.now() >= deadline) return;
+        // If channel already closed, no-op.
+        sendInterrupt();
+        try {
+          channel.write("\n");
+        } catch {
+          // ignore
+        }
+      }
+    })();
+
+    try {
+      await Promise.race([
+        done,
+        new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout waiting for capture to stop")), resolvedTimeoutMs)
+        ),
+      ]);
+    } catch (e) {
+      // Don't hard-fail: if the CLI doesn't emit a prompt/exit, we still want to:
+      // - close SSH resources
+      // - let the caller try DIME downloads (.cap, .cap01, etc)
+      session.stopTimedOut = true;
+      try {
+        channel.close();
       } catch {
         // ignore
       }
     }
 
-    await Promise.race([
-      done,
-      new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Timeout waiting for capture to stop")), timeoutMs)),
-    ]);
+    session.stoppedAt = new Date().toISOString();
+
+    // If we're back at a CUCM prompt, try to close the session cleanly.
+    if (looksLikeCucmPrompt(session.lastStdout) || looksLikeCucmPrompt(session.lastStderr)) {
+      try {
+        channel.write("exit\n");
+      } catch {
+        // ignore
+      }
+    }
+
+    // Ensure the channel is closed so the SSH client can terminate promptly.
+    try {
+      channel.end();
+    } catch {
+      // ignore
+    }
+    try {
+      channel.close();
+    } catch {
+      // ignore
+    }
+
+    // Attempt to learn the actual remote file path from CLI output.
+    // This helps when CUCM appends suffixes or reports a different on-disk location.
+    const inferred = extractCapFilePath(session.lastStdout) || extractCapFilePath(session.lastStderr);
+    if (inferred) {
+      session.remoteFilePath = inferred;
+      if (!session.remoteFileCandidates.includes(inferred)) {
+        session.remoteFileCandidates = [inferred, ...session.remoteFileCandidates];
+      }
+    }
 
     // stop() implies cleanup
     this.active.delete(captureId);
