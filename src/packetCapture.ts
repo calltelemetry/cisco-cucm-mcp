@@ -15,6 +15,10 @@ export type PacketCaptureStart = {
   size?: string;
   hostFilterIp?: string;
   portFilter?: number;
+  // If set, stop the capture after this long even if packet count isn't reached.
+  maxDurationMs?: number;
+  // Guardrail so packet_capture_start doesn't hang forever.
+  startTimeoutMs?: number;
 };
 
 export type PacketCaptureSession = {
@@ -259,12 +263,34 @@ export class PacketCaptureManager {
     });
 
     // Wait for prompt before running capture command.
+    // Some CUCM shells don't print a prompt until you send a newline.
+    const promptTimeoutMs = Math.max(2000, Math.trunc(opts.startTimeoutMs ?? 30_000));
     try {
+      try {
+        channel.write("\n");
+      } catch {
+        // ignore
+      }
+
+      // Nudge a couple times if no prompt yet.
+      void (async () => {
+        const delays = [400, 1200, 2500];
+        for (const d of delays) {
+          await new Promise((r) => setTimeout(r, d));
+          if (looksLikeCucmPrompt(session.lastStdout) || looksLikeCucmPrompt(session.lastStderr)) return;
+          try {
+            channel.write("\n");
+          } catch {
+            // ignore
+          }
+        }
+      })();
+
       await waitFor(
         channel,
         session,
         () => looksLikeCucmPrompt(session.lastStdout) || looksLikeCucmPrompt(session.lastStderr),
-        30_000,
+        promptTimeoutMs,
         "Timeout waiting for CUCM CLI prompt"
       );
       channel.write(`${cmd}\n`);
@@ -285,6 +311,18 @@ export class PacketCaptureManager {
     }
 
     this.active.set(id, { session, client, channel });
+
+    // Optional guard: stop after a duration even if packet count isn't reached.
+    if (opts.maxDurationMs != null) {
+      const dur = Math.max(250, Math.trunc(opts.maxDurationMs));
+      const t = setTimeout(() => {
+        void this.stop(id).catch(() => {
+          // ignore
+        });
+      }, dur);
+      (t as any).unref?.();
+    }
+
     return session;
   }
 

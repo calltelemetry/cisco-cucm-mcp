@@ -57,7 +57,18 @@ function dimeXmlBytes(contentType: string | null, bytes: Buffer): Buffer {
   if (!boundary) return bytes;
   const parts = parseMultipartRelated(bytes, boundary);
   const xmlParts = parts.filter((p) => isXmlContentType(p.contentType));
-  if (xmlParts.length === 0) throw new Error("DIME response missing text/xml part");
+  if (xmlParts.length === 0) {
+    // Some CUCM versions have been observed returning multipart bodies where the XML part
+    // does not advertise a classic XML content-type. Fall back to sniffing the payload.
+    const sniffed = parts.find((p) => {
+      const head = p.body.subarray(0, 64).toString("utf8");
+      return head.includes("<?xml") || head.trimStart().startsWith("<");
+    });
+    if (sniffed) return sniffed.body;
+
+    const partTypes = parts.map((p) => p.contentType).join(", ");
+    throw new Error(`DIME response missing text/xml part (boundary=${boundary}; parts=[${partTypes || "none"}])`);
+  }
   return xmlParts[0].body;
 }
 

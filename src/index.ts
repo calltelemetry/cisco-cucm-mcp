@@ -186,8 +186,22 @@ server.tool(
     size: z.string().optional().describe("Packet size (e.g. all)"),
     hostFilterIp: z.string().optional().describe("Optional filter: host ip <addr>"),
     portFilter: z.number().int().min(1).max(65535).optional().describe("Optional filter: port <num>"),
+    maxDurationMs: z
+      .number()
+      .int()
+      .min(250)
+      .max(24 * 60 * 60_000)
+      .optional()
+      .describe("Stop after this duration even if packet count isn't reached"),
+    startTimeoutMs: z
+      .number()
+      .int()
+      .min(2000)
+      .max(120_000)
+      .optional()
+      .describe("Timeout for starting capture (SSH connect + command start)"),
   },
-  async ({ host, sshPort, auth, iface, fileBase, count, maxPackets, size, hostFilterIp, portFilter }) => {
+  async ({ host, sshPort, auth, iface, fileBase, count, maxPackets, size, hostFilterIp, portFilter, maxDurationMs, startTimeoutMs }) => {
     const resolvedCount = count ?? (maxPackets ? 1_000_000 : undefined);
     const result = await captures.start({
       host,
@@ -199,6 +213,8 @@ server.tool(
       size,
       hostFilterIp,
       portFilter,
+      maxDurationMs,
+      startTimeoutMs,
     });
     return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
   }

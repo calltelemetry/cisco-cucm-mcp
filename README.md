@@ -89,3 +89,4 @@ Live tests are opt-in via env vars; see `test/live.test.js`.
 
 - Use the platform/OS admin for SSH (`administrator` user on most lab systems)
 - To request a high packet count without specifying an exact number, pass `maxPackets: true` to `packet_capture_start`
+- If traffic is low, a small `count` can still run “forever” waiting for packets; use `packet_capture_stop` to cancel, or set `maxDurationMs` to auto-stop
