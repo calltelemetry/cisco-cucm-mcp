@@ -218,18 +218,33 @@ export class PacketCaptureManager {
       stoppedAt: session.stoppedAt,
     });
 
-    await new Promise<void>((resolve, reject) => {
-      client
-        .on("ready", () => resolve())
-        .on("error", (e: unknown) => reject(e))
-        .connect({
-          host: opts.host,
-          port: sshPort,
-          username: auth.username,
-          password: auth.password,
-          readyTimeout: 15000,
-        });
+    const startTimeoutMs = Math.max(2000, Math.trunc(opts.startTimeoutMs ?? 30_000));
+
+    let connectTimer: ReturnType<typeof setTimeout> | undefined;
+    const connectTimeout = new Promise<never>((_, reject) => {
+      connectTimer = setTimeout(() => reject(new Error(`SSH connect timed out after ${startTimeoutMs}ms`)), startTimeoutMs);
+      (connectTimer as any).unref?.();
     });
+
+    try {
+      await Promise.race([
+        new Promise<void>((resolve, reject) => {
+          client
+            .on("ready", () => resolve())
+            .on("error", (e: unknown) => reject(e))
+            .connect({
+              host: opts.host,
+              port: sshPort,
+              username: auth.username,
+              password: auth.password,
+              readyTimeout: 15000,
+            });
+        }),
+        connectTimeout,
+      ]);
+    } finally {
+      if (connectTimer) clearTimeout(connectTimer);
+    }
 
     // CUCM SSH presents an interactive CLI shell. `exec()` is not reliably supported,
     // so we open a shell and type commands at the prompt.
@@ -264,7 +279,7 @@ export class PacketCaptureManager {
 
     // Wait for prompt before running capture command.
     // Some CUCM shells don't print a prompt until you send a newline.
-    const promptTimeoutMs = Math.max(2000, Math.trunc(opts.startTimeoutMs ?? 30_000));
+    const promptTimeoutMs = startTimeoutMs;
     try {
       try {
         channel.write("\n");

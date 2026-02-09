@@ -90,3 +90,58 @@ Live tests are opt-in via env vars; see `test/live.test.js`.
 - Use the platform/OS admin for SSH (`administrator` user on most lab systems)
 - To request a high packet count without specifying an exact number, pass `maxPackets: true` to `packet_capture_start`
 - If traffic is low, a small `count` can still run “forever” waiting for packets; use `packet_capture_stop` to cancel, or set `maxDurationMs` to auto-stop
+
+### Auth Note (DIME vs SSH)
+
+CUCM deployments vary:
+
+- SSH and DIME may accept different usernames/passwords.
+- Quick check: the right DIME user returns HTTP 200 for the WSDL.
+
+```bash
+curl -k -u "<user>:<pass>" \
+  "https://<cucm-host>:8443/logcollectionservice2/services/LogCollectionPortTypeService?wsdl" \
+  -o /dev/null -w "%{http_code}\n"
+```
+
+### Recommended Workflow
+
+1) Start capture (returns quickly; capture continues on CUCM):
+
+Tool: `packet_capture_start`
+
+Useful options:
+
+- `count`: stop after N packets (can wait indefinitely if traffic is low)
+- `maxDurationMs`: stop after a fixed time even if packet count isn’t reached
+- `startTimeoutMs`: fail fast if the CUCM CLI prompt isn’t reachable
+- `maxPackets: true`: sets a high capture count (1,000,000) when `count` is omitted
+
+2) Stop + download the capture:
+
+Tool: `packet_capture_stop_and_download`
+
+This:
+
+- stops the SSH capture (best-effort)
+- retries DIME downloads until the file appears
+- tries rolled filenames (`.cap01`, `.cap02`, ...)
+
+### What to Expect in Output
+
+Many MCP clients truncate long JSON. The CUCM MCP tools print a one-line summary first, followed by the full JSON:
+
+- `packet_capture_start`: prints `id`, `remoteFilePath`, and a reminder that capture continues on CUCM until stopped
+- `packet_capture_stop_and_download`: prints `savedPath` and `bytes` so you can immediately open the file
+
+### Viewing the Capture (macOS)
+
+After download, you’ll get a `savedPath` like `/tmp/foo.cap`.
+
+```bash
+# Reveal in Finder
+open -R "/tmp/foo.cap"
+
+# Open in Wireshark
+open -a Wireshark "/tmp/foo.cap"
+```

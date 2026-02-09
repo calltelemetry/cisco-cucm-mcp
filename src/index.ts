@@ -25,7 +25,7 @@ const strictTls = tlsMode === "strict" || tlsMode === "verify";
 // Set CUCM_MCP_TLS_MODE=strict to enforce verification.
 if (!strictTls) process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
-const server = new McpServer({ name: "cucm", version: "0.1.4" });
+const server = new McpServer({ name: "cucm", version: "0.1.8" });
 const captures = new PacketCaptureManager();
 const captureState = defaultStateStore();
 
@@ -216,7 +216,14 @@ server.tool(
       maxDurationMs,
       startTimeoutMs,
     });
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    const summary =
+      `Started CUCM packet capture (SSH). ` +
+      `id=${result.id} host=${result.host} fileBase=${result.fileBase} remoteFilePath=${result.remoteFilePath}. ` +
+      `Stops when packet count is reached, when you call packet_capture_stop, or via maxDurationMs.`;
+
+    return {
+      content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }],
+    };
   }
 );
 
@@ -282,8 +289,25 @@ server.tool(
     timeoutMs: z.number().int().min(1000).max(10 * 60_000).optional().describe("How long to wait for stop (default ~90s)"),
   },
   async ({ captureId, timeoutMs }) => {
-    const result = await captures.stop(captureId, timeoutMs);
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    try {
+      const result = await captures.stop(captureId, timeoutMs);
+      const summary = `Stopped capture. id=${result.id} stopTimedOut=${Boolean(result.stopTimedOut)} remoteFilePath=${result.remoteFilePath}`;
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      const stopError = e instanceof Error ? e.message : String(e || "");
+      const pruned = captureState.pruneExpired(captureState.load());
+      const rec = pruned.captures[captureId];
+      if (!rec) throw e;
+      const summary = `Failed to stop capture (returning state record). id=${captureId} stopError=${JSON.stringify(stopError)}`;
+      return {
+        content: [
+          {
+            type: "text",
+            text: `${summary}\n\n${JSON.stringify({ stopError, record: rec }, null, 2)}`,
+          },
+        ],
+      };
+    }
   }
 );
 
@@ -295,14 +319,20 @@ server.tool(
     dimePort: z.number().int().min(1).max(65535).optional(),
     auth: dimeAuthSchema.describe("DIME auth (optional; defaults to CUCM_DIME_USERNAME/CUCM_DIME_PASSWORD)"),
     outFile: z.string().optional().describe("Optional output path for the downloaded .cap file"),
-    stopTimeoutMs: z.number().int().min(1000).max(10 * 60_000).optional().describe("How long to wait for SSH capture stop"),
+    stopTimeoutMs: z
+      .number()
+      .int()
+      .min(1000)
+      .max(10 * 60_000)
+      .optional()
+      .describe("How long to wait for SSH capture stop (default 300000)"),
     downloadTimeoutMs: z
       .number()
       .int()
       .min(1000)
       .max(10 * 60_000)
       .optional()
-      .describe("How long to wait for the capture file to appear in DIME"),
+      .describe("How long to wait for the capture file to appear in DIME (default 300000)"),
     downloadPollIntervalMs: z
       .number()
       .int()
@@ -312,28 +342,50 @@ server.tool(
       .describe("How often to retry DIME GetOneFile when the file isn't there yet"),
   },
   async ({ captureId, dimePort, auth, outFile, stopTimeoutMs, downloadTimeoutMs, downloadPollIntervalMs }) => {
-    const stopped = await captures.stop(captureId, stopTimeoutMs);
-    const candidates = (stopped.remoteFileCandidates || []).length
-      ? stopped.remoteFileCandidates
-      : [stopped.remoteFilePath];
+    const stopTimeout = stopTimeoutMs ?? 300_000;
+    const dlTimeout = downloadTimeoutMs ?? 300_000;
+    const dlPoll = downloadPollIntervalMs ?? 2000;
+
+    let stopped: { [k: string]: any };
+    let stopError: string | undefined;
+    try {
+      stopped = await captures.stop(captureId, stopTimeout);
+    } catch (e) {
+      stopError = e instanceof Error ? e.message : String(e || "");
+      // Fall back to state file (useful if stop failed or MCP restarted).
+      const pruned = captureState.pruneExpired(captureState.load());
+      const rec = pruned.captures[captureId];
+      if (!rec) throw new Error(`Failed to stop capture and capture not found in state: ${captureId}. stopError=${stopError}`);
+      stopped = rec;
+    }
+
+    const candidates = (stopped.remoteFileCandidates || []).length ? stopped.remoteFileCandidates : [stopped.remoteFilePath];
 
     const dl = await getOneFileAnyWithRetry(stopped.host, candidates, {
       auth: auth as DimeAuth | undefined,
       port: dimePort,
-      timeoutMs: downloadTimeoutMs,
-      pollIntervalMs: downloadPollIntervalMs,
+      timeoutMs: dlTimeout,
+      pollIntervalMs: dlPoll,
     });
     const saved = writeDownloadedFile(dl, outFile);
+
+    const summary =
+      `Capture downloaded. ` +
+      `id=${captureId} stopTimedOut=${Boolean(stopped.stopTimedOut)} remoteFilePath=${dl.filename} ` +
+      `savedPath=${saved.filePath} bytes=${saved.bytes}` +
+      (stopError ? ` stopError=${JSON.stringify(stopError)}` : "");
+
     return {
       content: [
         {
           type: "text",
-          text: JSON.stringify(
+          text: `${summary}\n\n${JSON.stringify(
             {
               captureId: stopped.id,
               host: stopped.host,
               remoteFilePath: dl.filename,
               stopTimedOut: stopped.stopTimedOut || false,
+              stopError,
               savedPath: saved.filePath,
               bytes: saved.bytes,
               dimeAttempts: dl.attempts,
@@ -341,7 +393,7 @@ server.tool(
             },
             null,
             2
-          ),
+          )}`,
         },
       ],
     };
@@ -383,11 +435,13 @@ server.tool(
       pollIntervalMs: downloadPollIntervalMs,
     });
     const saved = writeDownloadedFile(dl, outFile);
+    const summary =
+      `Capture downloaded from state. id=${captureId} remoteFilePath=${dl.filename} savedPath=${saved.filePath} bytes=${saved.bytes}`;
     return {
       content: [
         {
           type: "text",
-          text: JSON.stringify(
+          text: `${summary}\n\n${JSON.stringify(
             {
               captureId,
               host: rec.host,
@@ -399,7 +453,7 @@ server.tool(
             },
             null,
             2
-          ),
+          )}`,
         },
       ],
     };
