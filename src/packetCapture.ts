@@ -139,6 +139,40 @@ type Active = {
   channel: ClientChannel;
 };
 
+function waitFor(
+  channel: ClientChannel,
+  session: PacketCaptureSession,
+  predicate: () => boolean,
+  timeoutMs: number,
+  timeoutMessage: string
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (predicate()) return resolve();
+
+    const onData = () => {
+      if (predicate()) cleanup(true);
+    };
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const cleanup = (ok: boolean) => {
+      channel.off("data", onData);
+      channel.stderr.off("data", onData);
+      if (timer) clearTimeout(timer);
+      if (ok) resolve();
+      else {
+        const tail = (session.lastStdout || session.lastStderr || "").slice(-400);
+        reject(new Error(`${timeoutMessage}. lastOutput=${JSON.stringify(tail)}`));
+      }
+    };
+
+    channel.on("data", onData);
+    channel.stderr.on("data", onData);
+
+    timer = setTimeout(() => cleanup(false), Math.max(1000, timeoutMs));
+    (timer as any).unref?.();
+  });
+}
+
 export class PacketCaptureManager {
   private active = new Map<string, Active>();
   private state: CaptureStateStore;
@@ -193,8 +227,10 @@ export class PacketCaptureManager {
         });
     });
 
+    // CUCM SSH presents an interactive CLI shell. `exec()` is not reliably supported,
+    // so we open a shell and type commands at the prompt.
     const channel = await new Promise<ClientChannel>((resolve, reject) => {
-      client.exec(cmd, { pty: true }, (err: unknown, ch: ClientChannel) => {
+      client.shell({ term: "vt100", cols: 120, rows: 40 }, (err: unknown, ch: ClientChannel) => {
         if (err) return reject(err);
         resolve(ch);
       });
@@ -222,6 +258,32 @@ export class PacketCaptureManager {
       }
     });
 
+    // Wait for prompt before running capture command.
+    try {
+      await waitFor(
+        channel,
+        session,
+        () => looksLikeCucmPrompt(session.lastStdout) || looksLikeCucmPrompt(session.lastStderr),
+        30_000,
+        "Timeout waiting for CUCM CLI prompt"
+      );
+      channel.write(`${cmd}\n`);
+    } catch (e) {
+      try {
+        channel.end();
+        channel.close();
+      } catch {
+        // ignore
+      }
+      try {
+        client.end();
+        client.destroy();
+      } catch {
+        // ignore
+      }
+      throw e;
+    }
+
     this.active.set(id, { session, client, channel });
     return session;
   }
@@ -232,6 +294,9 @@ export class PacketCaptureManager {
 
     const { channel, client, session } = a;
     const done = new Promise<void>((resolve) => {
+      if (looksLikeCucmPrompt(session.lastStdout) || looksLikeCucmPrompt(session.lastStderr)) {
+        return resolve();
+      }
       // CUCM CLI can keep the SSH channel open after the command finishes
       // (it returns to a prompt rather than exiting). Treat prompt as "stopped".
       const onData = () => {

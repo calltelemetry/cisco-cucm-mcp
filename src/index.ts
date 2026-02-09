@@ -25,7 +25,7 @@ const strictTls = tlsMode === "strict" || tlsMode === "verify";
 // Set CUCM_MCP_TLS_MODE=strict to enforce verification.
 if (!strictTls) process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
-const server = new McpServer({ name: "cucm", version: "0.1.3" });
+const server = new McpServer({ name: "cucm", version: "0.1.4" });
 const captures = new PacketCaptureManager();
 const captureState = defaultStateStore();
 
@@ -178,19 +178,24 @@ server.tool(
     auth: sshAuthSchema,
     iface: z.string().optional().describe("Interface (default eth0)"),
     fileBase: z.string().optional().describe("Capture base name (no dots). Saved as <fileBase>.cap"),
-    count: z.number().int().min(1).max(200000).optional().describe("Packet count (file max is typically 100000)"),
+    count: z.number().int().min(1).max(1_000_000).optional().describe("Packet count (common max is 1000000)"),
+    maxPackets: z
+      .boolean()
+      .optional()
+      .describe("If true and count is omitted, uses a high capture count (1,000,000)"),
     size: z.string().optional().describe("Packet size (e.g. all)"),
     hostFilterIp: z.string().optional().describe("Optional filter: host ip <addr>"),
     portFilter: z.number().int().min(1).max(65535).optional().describe("Optional filter: port <num>"),
   },
-  async ({ host, sshPort, auth, iface, fileBase, count, size, hostFilterIp, portFilter }) => {
+  async ({ host, sshPort, auth, iface, fileBase, count, maxPackets, size, hostFilterIp, portFilter }) => {
+    const resolvedCount = count ?? (maxPackets ? 1_000_000 : undefined);
     const result = await captures.start({
       host,
       sshPort,
       auth: auth as SshAuth | undefined,
       iface,
       fileBase,
-      count,
+      count: resolvedCount,
       size,
       hostFilterIp,
       portFilter,

@@ -84,3 +84,8 @@ Live tests are opt-in via env vars; see `test/live.test.js`.
 - `packet_capture_stop_and_download` - stop capture + download `.cap` via DIME
 - `packet_capture_state_list` - list captures from state file
 - `packet_capture_download_from_state` - download by captureId after restart
+
+## Packet Capture Notes
+
+- Use the platform/OS admin for SSH (`administrator` user on most lab systems)
+- To request a high packet count without specifying an exact number, pass `maxPackets: true` to `packet_capture_start`
