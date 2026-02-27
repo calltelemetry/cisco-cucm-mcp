@@ -1,6 +1,6 @@
 {
   "name": "@calltelemetry/cucm-mcp",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "type": "module",
   "description": "MCP server for CUCM tooling (DIME logs, syslog, packet capture)",
   "license": "UNLICENSED",
@@ -22,7 +22,7 @@
   },
   "scripts": {
     "start": "tsx src/index.ts",
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node18 --format=esm --outdir=dist --packages=external --sourcemap && node scripts/chmod-bin.mjs",
+    "build": "esbuild src/*.ts --platform=node --target=node18 --format=esm --outdir=dist --packages=external --sourcemap && node scripts/chmod-bin.mjs",
     "typecheck": "tsc --noEmit",
     "test": "yarn build && node --test test/*.test.js",
     "prepack": "yarn test"
