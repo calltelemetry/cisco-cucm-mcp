@@ -12,6 +12,7 @@ __metadata:
     "@modelcontextprotocol/sdk": "npm:^1.12.1"
     "@types/node": "npm:^25.1.0"
     "@types/ssh2": "npm:^1.15.4"
+    esbuild: "npm:^0.27.3"
     fast-xml-parser: "npm:^4.5.3"
     ssh2: "npm:^1.16.0"
     tsx: "npm:^4.19.4"
@@ -629,7 +630,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"esbuild@npm:~0.27.0":
+"esbuild@npm:^0.27.3, esbuild@npm:~0.27.0":
   version: 0.27.3
   resolution: "esbuild@npm:0.27.3"
   dependencies:

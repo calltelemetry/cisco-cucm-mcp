@@ -21,8 +21,6 @@ jobs:
 
       - name: Build
         run: yarn build
-        env:
-          NODE_OPTIONS: '--max-old-space-size=8192'
 
       - name: Test
         run: yarn test
