@@ -19,6 +19,7 @@ import { guessTimezoneString } from "./time.js";
 import { PacketCaptureManager, type SshAuth } from "./packetCapture.js";
 import { defaultStateStore } from "./state.js";
 import { applyPhone, updatePhonePacketCapture, axlExecute, type AxlAuth } from "./axl.js";
+import { pcapCallSummary, pcapSipCalls, pcapScppMessages, pcapRtpStreams, pcapProtocolFilter } from "./pcap-analyze.js";
 
 // Default to accepting self-signed/invalid certs (common on CUCM lab/dev).
 // Opt back into strict verification with CUCM_MCP_TLS_MODE=strict.
@@ -782,6 +783,130 @@ server.tool(
         },
       ],
     };
+  }
+);
+
+// ---------------------------------------------------------------------------
+// PCAP Analysis Tools (requires tshark / Wireshark CLI)
+// ---------------------------------------------------------------------------
+
+function resolveCapturePath(input: string): string {
+  // If it looks like a file path, use directly
+  if (input.includes("/") || input.includes("\\") || input.endsWith(".cap") || input.endsWith(".pcap")) {
+    return input;
+  }
+  // Otherwise treat as captureId and resolve from state
+  const pruned = captureState.pruneExpired(captureState.load());
+  const rec = pruned.captures[input];
+  if (!rec) throw new Error(`No capture file path and no state record for: ${input}`);
+  // Look for a downloaded file in /tmp/cucm-mcp/
+  const basename = rec.remoteFilePath.split("/").pop() || `${rec.fileBase}.cap`;
+  const localPath = `/tmp/cucm-mcp/${basename}`;
+  return localPath;
+}
+
+server.tool(
+  "pcap_call_summary",
+  "High-level overview of a packet capture: protocols present, SIP call count, RTP streams, endpoints. " +
+    "Use this first to understand what's in a capture before drilling into specific calls.",
+  {
+    filePath: z.string().min(1).describe("Path to .cap/.pcap file, or a captureId from packet_capture_start"),
+  },
+  async ({ filePath }) => {
+    try {
+      const resolved = resolveCapturePath(filePath);
+      const result = await pcapCallSummary(resolved);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "pcap_sip_calls",
+  "Extract SIP call flows from a capture, grouped by Call-ID. " +
+    "Shows INVITE/100/180/200/BYE sequences, From/To, SDP media info, and call setup timing.",
+  {
+    filePath: z.string().min(1).describe("Path to .cap/.pcap file, or a captureId"),
+    callId: z.string().optional().describe("Filter to a specific SIP Call-ID"),
+  },
+  async ({ filePath, callId }) => {
+    try {
+      const resolved = resolveCapturePath(filePath);
+      const result = await pcapSipCalls(resolved, callId);
+      const summary = `Found ${result.length} SIP call(s)` +
+        (result.length > 0 ? `: ${result.map((c) => `${c.callId} (${c.metrics.messageCount} msgs, ${c.metrics.answered ? "answered" : "unanswered"})`).join(", ")}` : "");
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "pcap_sccp_messages",
+  "Extract Skinny/SCCP messages from a capture. " +
+    "Shows phone registration, call state changes, media channel setup (OpenReceiveChannel, StartMediaTransmission), and key presses.",
+  {
+    filePath: z.string().min(1).describe("Path to .cap/.pcap file, or a captureId"),
+    deviceFilter: z.string().optional().describe("Filter to a specific device IP address"),
+  },
+  async ({ filePath, deviceFilter }) => {
+    try {
+      const resolved = resolveCapturePath(filePath);
+      const result = await pcapScppMessages(resolved, deviceFilter);
+      const summary = `Found ${result.totalMessages} SCCP message(s) across ${result.devices.length} device(s). ` +
+        `Top message types: ${Object.entries(result.messageTypes).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k}(${v})`).join(", ")}`;
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "pcap_rtp_streams",
+  "Analyze RTP media streams in a capture. " +
+    "Shows per-stream jitter, packet loss, codec, duration. Use to assess call quality.",
+  {
+    filePath: z.string().min(1).describe("Path to .cap/.pcap file, or a captureId"),
+    ssrcFilter: z.string().optional().describe("Filter to a specific RTP SSRC (hex, e.g. 0xABCD1234)"),
+  },
+  async ({ filePath, ssrcFilter }) => {
+    try {
+      const resolved = resolveCapturePath(filePath);
+      const result = await pcapRtpStreams(resolved, ssrcFilter);
+      const summary = `Found ${result.summary.totalStreams} RTP stream(s). ` +
+        `Worst loss: ${result.summary.worstLoss}, worst jitter: ${result.summary.worstJitter}`;
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "pcap_protocol_filter",
+  "Run an arbitrary tshark display filter on a capture and extract specific fields. " +
+    "Escape hatch for deep protocol investigation. Examples: 'sip.Method == INVITE', 'skinny.callState == 12', 'rtp.ssrc == 0xABCD'.",
+  {
+    filePath: z.string().min(1).describe("Path to .cap/.pcap file, or a captureId"),
+    displayFilter: z.string().min(1).describe("tshark display filter expression"),
+    fields: z
+      .array(z.string())
+      .optional()
+      .describe("Specific tshark fields to extract (e.g. ['sip.Call-ID', 'sip.from.addr']). If omitted, returns frame basics."),
+    maxPackets: z.number().int().min(1).max(1000).optional().describe("Max packets to return (default 100, max 1000)"),
+  },
+  async ({ filePath, displayFilter, fields, maxPackets }) => {
+    try {
+      const resolved = resolveCapturePath(filePath);
+      const result = await pcapProtocolFilter(resolved, displayFilter, fields, maxPackets);
+      return { content: [{ type: "text", text: `${result.length} packet(s) matched filter "${displayFilter}"\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
   }
 );
 

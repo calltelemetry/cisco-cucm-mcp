@@ -1,7 +1,6 @@
 {
   "name": "@calltelemetry/cucm-mcp",
   "version": "0.1.8",
-  "private": false,
   "type": "module",
   "description": "MCP server for CUCM tooling (DIME logs, syslog, packet capture)",
   "license": "UNLICENSED",
@@ -9,9 +8,7 @@
     "type": "git",
     "url": "git+https://github.com/calltelemetry/cucm-mcp.git"
   },
-  "bin": {
-    "cucm-mcp": "dist/index.js"
-  },
+  "bin": "dist/index.js",
   "publishConfig": {
     "access": "public"
   },
