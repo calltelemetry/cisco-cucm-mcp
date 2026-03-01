@@ -22,6 +22,9 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Audit production dependencies
+        run: yarn npm audit --environment production || true
+
       - name: Type check
         run: yarn typecheck
 

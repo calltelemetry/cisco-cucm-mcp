@@ -5,3 +5,12 @@ node_modules/
 .DS_Store
 .cucm-mcp-state.json
 coverage/
+logs/
+
+# Secrets / credentials
+.env
+.env.*
+*.key
+*.pem
+*.p12
+credentials.json

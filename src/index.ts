@@ -36,7 +36,7 @@ import { formatUnknownError } from "./errors.js";
 
 setupPermissiveTls();
 
-const server = new McpServer({ name: "cucm", version: "0.6.0" });
+const server = new McpServer({ name: "cucm", version: "0.6.1" });
 const captures = new PacketCaptureManager();
 const captureState = defaultStateStore();
 
@@ -991,7 +991,7 @@ server.tool(
       .optional()
       .describe("How often to retry DIME GetOneFile when the file isn't there yet"),
   },
-  WRITE_SAFE,
+  READ_ONLY_NETWORK,
   async ({ captureId, dimePort, auth, outFile, downloadTimeoutMs, downloadPollIntervalMs }) => {
     const pruned = captureState.pruneExpired(captureState.load());
     const rec = pruned.captures[captureId];
@@ -1262,7 +1262,7 @@ server.tool(
     sessionHandle: z.string().min(1).describe("Session handle from perfmon_open_session"),
     timeoutMs: z.number().int().min(1000).max(120_000).optional(),
   },
-  WRITE_SAFE,
+  READ_ONLY_NETWORK,
   async ({ host, port, auth, sessionHandle, timeoutMs }) => {
     try {
       const result = await perfmonCollectSessionData(host, sessionHandle, auth as DimeAuth | undefined, port, timeoutMs);
