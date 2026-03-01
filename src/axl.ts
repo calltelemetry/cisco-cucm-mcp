@@ -54,12 +54,12 @@ function expandReturnedTagsPaths(paths: string[]): Record<string, unknown> {
     if (parts.length === 0) continue;
     let cur: Record<string, unknown> = root;
     for (let i = 0; i < parts.length; i++) {
-      const key = parts[i];
+      const key = parts[i]!;
       const isLeaf = i === parts.length - 1;
       const next = cur[key];
       if (isLeaf) {
         // Leaf tags are empty elements ("<foo/>")
-        if (next == null) cur[key] = null;
+        if (next === null || next === undefined) cur[key] = null;
       } else {
         if (!isPlainObject(next)) cur[key] = {};
         cur = cur[key] as Record<string, unknown>;
@@ -81,7 +81,7 @@ function objectToXml(tag: string, value: unknown): string {
     return value.map((v) => objectToXml(tag, v)).join("");
   }
 
-  if (value == null) {
+  if (value === null || value === undefined) {
     return `<${tag}/>`;
   }
 
@@ -98,13 +98,13 @@ function objectToXml(tag: string, value: unknown): string {
   let text: string | null = null;
   for (const [k, v] of Object.entries(value)) {
     if (k === "#text") {
-      text = v == null ? "" : String(v);
+      text = v === null || v === undefined ? "" : String(v);
       continue;
     }
     if (k.startsWith("@")) {
       const attrName = k.slice(1);
       if (!attrName) continue;
-      if (v == null) continue;
+      if (v === null || v === undefined) continue;
       attrs.push(`${attrName}="${escapeXml(String(v))}"`);
       continue;
     }
@@ -113,7 +113,7 @@ function objectToXml(tag: string, value: unknown): string {
 
   const attrStr = attrs.length ? " " + attrs.join(" ") : "";
   const childStr = children.join("");
-  const textStr = text != null ? escapeXml(text) : "";
+  const textStr = text !== null && text !== undefined ? escapeXml(text) : "";
 
   if (!childStr && !textStr) {
     return `<${tag}${attrStr}/>`;
@@ -128,7 +128,7 @@ export function normalizeHost(hostOrUrl: string): string {
     const u = new URL(s);
     return u.hostname;
   }
-  return s.replace(/^https?:\/\//, "").replace(/\/+$/, "").split("/")[0];
+  return s.replace(/^https?:\/\//, "").replace(/\/+$/, "").split("/")[0] ?? s;
 }
 
 export function resolveAxlAuth(auth?: AxlAuth): Required<AxlAuth> {
@@ -204,7 +204,7 @@ function parseSoapReturn(operation: string, xmlText: string): { returnValue?: st
 
   const resp = body?.[`${operation}Response`];
   const ret = resp?.return;
-  if (ret == null) return {};
+  if (ret === null || ret === undefined) return {};
   if (typeof ret === "string") return { returnValue: ret };
   // Some AXL responses wrap the value.
   if (typeof ret === "object" && typeof ret["#text"] === "string") return { returnValue: ret["#text"] };
@@ -276,7 +276,7 @@ export async function axlExecute(
     ? Object.entries(data)
         .map(([k, v]) => objectToXml(k, v))
         .join("")
-    : data == null
+    : data === null || data === undefined
       ? ""
       : objectToXml("value", data);
 

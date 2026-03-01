@@ -17,14 +17,20 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Install dependencies
-        run: yarn install
+      - name: Enable Corepack
+        run: corepack enable
 
-      - name: Build
-        run: yarn build
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Type check
+        run: yarn typecheck
 
       - name: Test
         run: yarn test
+
+      - name: Build
+        run: yarn build
 
       - name: Publish to npm
         run: npm publish --access public

@@ -69,7 +69,7 @@ function dimeXmlBytes(contentType: string | null, bytes: Buffer): Buffer {
     const partTypes = parts.map((p) => p.contentType).join(", ");
     throw new Error(`DIME response missing text/xml part (boundary=${boundary}; parts=[${partTypes || "none"}])`);
   }
-  return xmlParts[0].body;
+  return xmlParts[0]!.body;
 }
 
 export function normalizeHost(hostOrUrl: string): string {
@@ -79,7 +79,7 @@ export function normalizeHost(hostOrUrl: string): string {
     const u = new URL(s);
     return u.hostname;
   }
-  return s.replace(/^https?:\/\//, "").replace(/\/+$/, "").split("/")[0];
+  return s.replace(/^https?:\/\//, "").replace(/\/+$/, "").split("/")[0] ?? s;
 }
 
 export function resolveAuth(auth?: DimeAuth): Required<DimeAuth> {
@@ -278,7 +278,7 @@ export async function selectLogs(
   const systemFileList =
     resultSet?.SchemaFileSelectionResult?.Node?.ServiceList?.SystemLogs?.SetOfFiles?.File;
 
-  const toArray = (x: any) => (x == null ? [] : Array.isArray(x) ? x : [x]);
+  const toArray = (x: any) => (x === null || x === undefined ? [] : Array.isArray(x) ? x : [x]);
   const combined = [...toArray(serviceFileList), ...toArray(systemFileList)];
 
   if (combined.length === 0) throw new Error("No files found (missing ServiceLogs/SystemLogs SetOfFiles/File)");

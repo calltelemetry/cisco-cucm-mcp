@@ -105,7 +105,7 @@ export function buildCaptureCommand(opts: {
     size,
   ];
 
-  if (opts.portFilter != null) {
+  if (opts.portFilter !== null && opts.portFilter !== undefined) {
     const p = Math.trunc(opts.portFilter);
     if (p < 1 || p > 65535) throw new Error("portFilter must be 1..65535");
     args.push("port", String(p));
@@ -157,23 +157,22 @@ function waitFor(
       if (predicate()) cleanup(true);
     };
 
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const cleanup = (ok: boolean) => {
+    channel.on("data", onData);
+    channel.stderr.on("data", onData);
+
+    const timer = setTimeout(() => cleanup(false), Math.max(1000, timeoutMs));
+    (timer as any).unref?.();
+
+    function cleanup(ok: boolean) {
       channel.off("data", onData);
       channel.stderr.off("data", onData);
-      if (timer) clearTimeout(timer);
+      clearTimeout(timer);
       if (ok) resolve();
       else {
         const tail = (session.lastStdout || session.lastStderr || "").slice(-400);
         reject(new Error(`${timeoutMessage}. lastOutput=${JSON.stringify(tail)}`));
       }
-    };
-
-    channel.on("data", onData);
-    channel.stderr.on("data", onData);
-
-    timer = setTimeout(() => cleanup(false), Math.max(1000, timeoutMs));
-    (timer as any).unref?.();
+    }
   });
 }
 
@@ -328,7 +327,7 @@ export class PacketCaptureManager {
     this.active.set(id, { session, client, channel });
 
     // Optional guard: stop after a duration even if packet count isn't reached.
-    if (opts.maxDurationMs != null) {
+    if (opts.maxDurationMs !== null && opts.maxDurationMs !== undefined) {
       const dur = Math.max(250, Math.trunc(opts.maxDurationMs));
       const t = setTimeout(() => {
         void this.stop(id).catch(() => {
@@ -425,7 +424,7 @@ export class PacketCaptureManager {
     } finally {
       if (timer) clearTimeout(timer);
     }
-    } catch (e) {
+    } catch {
       // Don't hard-fail: if the CLI doesn't emit a prompt/exit, we still want to:
       // - close SSH resources
       // - let the caller try DIME downloads (.cap, .cap01, etc)

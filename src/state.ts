@@ -41,7 +41,7 @@ export function nowIso(): string {
 }
 
 export function clampText(s: unknown, max = 2000): string | undefined {
-  if (s == null) return undefined;
+  if (s === null || s === undefined) return undefined;
   const t = String(s);
   if (t.length <= max) return t;
   return t.slice(t.length - max);

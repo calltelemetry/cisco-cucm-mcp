@@ -60,8 +60,8 @@ export function parseMultipartRelated(body: Buffer, boundary: string): Multipart
     }
 
     const headers = parseHeaderLines(headerLines);
-    const contentType = (headers["content-type"] || "application/octet-stream")
-      .split(";")[0]
+    const contentType = ((headers["content-type"] || "application/octet-stream")
+      .split(";")[0] ?? "application/octet-stream")
       .trim();
 
     const nextBoundary = findNextBoundary(cursor);

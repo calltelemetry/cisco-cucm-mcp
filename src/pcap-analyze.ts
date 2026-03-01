@@ -268,9 +268,9 @@ export async function pcapCallSummary(filePath: string): Promise<object> {
   for (const line of phsRaw.split("\n")) {
     const match = line.match(/^\s*([\w:]+)\s+frames:(\d+)\s+bytes:(\d+)/);
     if (match) {
-      const proto = match[1].split(":").pop()!.toLowerCase();
+      const proto = match[1]!.split(":").pop()!.toLowerCase();
       if (["sip", "skinny", "rtp", "rtcp", "sdp", "stun", "tcp", "udp", "ip", "eth"].includes(proto)) {
-        protocols[proto] = { frames: parseInt(match[2]), bytes: parseInt(match[3]) };
+        protocols[proto] = { frames: parseInt(match[2]!), bytes: parseInt(match[3]!) };
       }
     }
   }
@@ -300,7 +300,7 @@ export async function pcapCallSummary(filePath: string): Promise<object> {
     const ips = new Set<string>();
     for (const line of convRaw.split("\n")) {
       const m = line.match(/(\d+\.\d+\.\d+\.\d+)\s+<->\s+(\d+\.\d+\.\d+\.\d+)/);
-      if (m) { ips.add(m[1]); ips.add(m[2]); }
+      if (m) { ips.add(m[1]!); ips.add(m[2]!); }
     }
     endpoints = [...ips].sort();
   } catch { /* no IP convos */ }
@@ -308,7 +308,7 @@ export async function pcapCallSummary(filePath: string): Promise<object> {
   // Capture duration
   let durationSec = 0;
   try {
-    const capRaw = await runTshark([
+    const _capRaw = await runTshark([
       "-r", filePath, "-T", "fields", "-e", "frame.time_relative",
       "-E", "header=n", "-c", "1", "-Y", "frame.number == 0",
     ]);
@@ -317,7 +317,7 @@ export async function pcapCallSummary(filePath: string): Promise<object> {
       "-r", filePath, "-q", "-z", "io,stat,0",
     ]);
     const durMatch = durRaw.match(/Duration:\s+([\d.]+)/);
-    if (durMatch) durationSec = parseFloat(durMatch[1]);
+    if (durMatch) durationSec = parseFloat(durMatch[1]!);
   } catch { /* ignore */ }
 
   // Total packet count from capinfos-like output
@@ -436,8 +436,8 @@ export async function pcapSipCalls(filePath: string, callId?: string): Promise<S
 
   const flows: SipCallFlow[] = [];
   for (const [cid, messages] of callMap) {
-    const firstMsg = messages[0];
-    const lastMsg = messages[messages.length - 1];
+    const firstMsg = messages[0]!;
+    const lastMsg = messages[messages.length - 1]!;
     const answered = messages.some((m) => m.statusCode === 200 && m.cseq?.includes("INVITE"));
 
     // Setup time: INVITE → first 200 OK for INVITE
@@ -610,17 +610,17 @@ export async function pcapRtpStreams(filePath: string, ssrcFilter?: string): Pro
     const parts = line.trim().split(/\s+/);
     if (parts.length < 10) continue;
 
-    const srcAddr = parts[0];
-    const srcPort = parts[1];
-    const dstAddr = parts[2];
-    const dstPort = parts[3];
-    const ssrc = parts[4];
-    const ptStr = parts[5];
-    const packets = parseInt(parts[6]) || 0;
-    const lost = parseInt(parts[7]) || 0;
-    const maxDelta = parseFloat(parts[8]) || 0;
-    const maxJitter = parseFloat(parts[9]) || 0;
-    const meanJitter = parseFloat(parts[10]) || 0;
+    const srcAddr = parts[0] ?? '';
+    const srcPort = parts[1] ?? '';
+    const dstAddr = parts[2] ?? '';
+    const dstPort = parts[3] ?? '';
+    const ssrc = parts[4] ?? '';
+    const ptStr = parts[5] ?? '';
+    const packets = parseInt(parts[6] ?? '0') || 0;
+    const lost = parseInt(parts[7] ?? '0') || 0;
+    const maxDelta = parseFloat(parts[8] ?? '0') || 0;
+    const maxJitter = parseFloat(parts[9] ?? '0') || 0;
+    const meanJitter = parseFloat(parts[10] ?? '0') || 0;
 
     const pt = parseInt(ptStr) || 0;
 
@@ -629,7 +629,7 @@ export async function pcapRtpStreams(filePath: string, ssrcFilter?: string): Pro
     streams.push({
       src: `${srcAddr}:${srcPort}`,
       dst: `${dstAddr}:${dstPort}`,
-      ssrc,
+      ssrc: ssrc,
       payloadType: pt,
       codec: rtpCodecName(pt),
       packets,
