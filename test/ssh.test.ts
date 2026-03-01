@@ -1,4 +1,4 @@
-import { resolveSshAuth, looksLikeCucmPrompt } from "../src/ssh.js";
+import { resolveSshAuth, looksLikeCucmPrompt, stripAnsi } from "../src/ssh.js";
 
 describe("resolveSshAuth", () => {
   const origUser = process.env.CUCM_SSH_USERNAME;
@@ -62,5 +62,59 @@ describe("looksLikeCucmPrompt", () => {
   it("rejects empty/undefined input", () => {
     expect(looksLikeCucmPrompt("")).toBe(false);
     expect(looksLikeCucmPrompt(undefined)).toBe(false);
+  });
+
+  // Regression: CUCM sends \r\n (CRLF) and standalone \r in SSH output
+  it("matches prompt after CRLF line endings", () => {
+    expect(looksLikeCucmPrompt("Welcome to CLI\r\n\r\nadmin:")).toBe(true);
+  });
+
+  it("matches prompt after standalone CR", () => {
+    expect(looksLikeCucmPrompt("admin:\r\n\radmin:")).toBe(true);
+  });
+
+  it("matches real CUCM login banner ending with prompt", () => {
+    const banner =
+      "Command Line Interface is starting up, please wait ...\r\n" +
+      "\r\n" +
+      "   Welcome to the Platform Command Line Interface\r\n" +
+      "\r\n" +
+      "VMware Installation:\r\n" +
+      "\t2 vCPU: Intel(R) Core(TM) i9-10900T CPU @ 1.90GHz\r\n" +
+      "\r\n" +
+      "admin:\r\n" +
+      "\radmin:";
+    expect(looksLikeCucmPrompt(banner)).toBe(true);
+  });
+
+  it("matches prompt with embedded ANSI escape codes", () => {
+    expect(looksLikeCucmPrompt("\x1b[0m\x1b[24;1Hadmin:")).toBe(true);
+  });
+});
+
+describe("stripAnsi", () => {
+  it("removes CSI sequences", () => {
+    expect(stripAnsi("\x1b[0mhello\x1b[1m world")).toBe("hello world");
+  });
+
+  it("removes cursor positioning", () => {
+    expect(stripAnsi("\x1b[24;1Hadmin:")).toBe("admin:");
+  });
+
+  it("removes SGR color sequences", () => {
+    expect(stripAnsi("\x1b[31mred\x1b[0m")).toBe("red");
+  });
+
+  it("preserves newlines and tabs", () => {
+    expect(stripAnsi("line1\nline2\ttab\x1b[0m")).toBe("line1\nline2\ttab");
+  });
+
+  it("handles text without escape codes", () => {
+    expect(stripAnsi("plain text")).toBe("plain text");
+  });
+
+  it("strips VT100 codes from cert list output", () => {
+    const raw = "\x1b[0mUnit: tomcat\x1b[0m\nType: own\nName: tomcat\x1b[24;1H";
+    expect(stripAnsi(raw)).toBe("Unit: tomcat\nType: own\nName: tomcat");
   });
 });

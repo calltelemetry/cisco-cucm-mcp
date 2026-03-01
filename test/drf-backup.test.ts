@@ -160,6 +160,17 @@ some-random-unstructured-line
     expect(entries[1]!.status).toBe("FAILED");
   });
 
+  // Regression: real CUCM 15 output has different column order (device before date)
+  it("parses CUCM 15 backup history format (device before date)", () => {
+    const output = `2025-12-12-13-44-12.tar   NETWORK        Fri Dec 12 13:45:19 PST 2025  SUCCESS  MANUAL        15.0.1.12900-234 UCM                        ---`;
+    const entries = parseBackupHistoryOutput(output);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.component).toBe("2025-12-12-13-44-12.tar");
+    expect(entries[0]!.device).toBe("NETWORK");
+    expect(entries[0]!.date).toContain("Dec 12");
+    expect(entries[0]!.status).toBe("SUCCESS");
+  });
+
   it("parses entries without device column", () => {
     const output = `
 backup_2026-02-27.tar     02/27/2026  SUCCESS

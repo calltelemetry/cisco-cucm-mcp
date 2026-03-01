@@ -160,6 +160,24 @@ describe('cdr-on-demand', () => {
       );
     });
 
+    // Regression: HTTP 500 with SOAP fault should extract faultstring, not dump raw XML
+    it('HTTP 500 SOAP fault extracts readable message', async () => {
+      const xml = `<?xml version='1.0' encoding='UTF-8'?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Body><soapenv:Fault><faultcode>soapenv:Server</faultcode><faultstring>No file found within the specified time range</faultstring><detail /></soapenv:Fault></soapenv:Body></soapenv:Envelope>`;
+
+      const h = withMockFetch(async () => {
+        await expect(
+          cdrGetFileList('10.0.0.1', '202602280100', '202602280200')
+        ).rejects.toThrow('No file found within the specified time range');
+      });
+
+      await h.run(async () =>
+        responseBytes(Buffer.from(xml, 'utf8'), {
+          status: 500,
+          headers: { 'content-type': 'text/xml' },
+        })
+      );
+    });
+
     it('parses single-item response (not wrapped in array)', async () => {
       const xml = `<?xml version="1.0"?>
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">

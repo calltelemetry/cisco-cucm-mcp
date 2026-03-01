@@ -124,17 +124,35 @@ export function parseBackupHistoryOutput(output: string): BackupHistoryEntry[] {
     const parts = line.split(/\s{2,}/);
 
     if (parts.length >= 3) {
-      // Best effort: first token = component/filename, middle = date(/time), then status, device
       const component = parts[0]?.trim() ?? "";
-      // Date may occupy one or two tokens; try to combine if the second token looks like a time
-      let date = parts[1]?.trim() ?? "";
-      let statusIdx = 2;
-      if (parts[2] && /^\d{2}:\d{2}/.test(parts[2])) {
-        date = `${date} ${parts[2].trim()}`;
-        statusIdx = 3;
+      const token1 = parts[1]?.trim() ?? "";
+
+      // Detect column order: CUCM 15 returns "component | device | date | status | ..."
+      // while some versions use "component | date | status | device"
+      // Heuristic: if token1 is a device type (NETWORK, SFTP, Local, etc.) or doesn't
+      // look like a date, assume the CUCM 15 column order.
+      const looksLikeDate = /^\d{2}[/\-]\d{2}[/\-]\d{2,4}|^\d{4}[/\-]\d{2}|^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s/i.test(token1);
+
+      let date: string;
+      let status: string;
+      let device: string | undefined;
+
+      if (!looksLikeDate && parts.length >= 4) {
+        // CUCM 15 format: component | device | date | status [| type | version | ...]
+        device = token1;
+        date = parts[2]?.trim() ?? "";
+        status = parts[3]?.trim() ?? "";
+      } else {
+        // Standard format: component | date [time] | status | device
+        date = token1;
+        let statusIdx = 2;
+        if (parts[2] && /^\d{2}:\d{2}/.test(parts[2])) {
+          date = `${date} ${parts[2].trim()}`;
+          statusIdx = 3;
+        }
+        status = parts[statusIdx]?.trim() ?? "";
+        device = parts[statusIdx + 1]?.trim() || undefined;
       }
-      const status = parts[statusIdx]?.trim() ?? "";
-      const device = parts[statusIdx + 1]?.trim() || undefined;
 
       entries.push({ date, component, status, device, rawLine: line });
     } else if (parts.length === 2) {

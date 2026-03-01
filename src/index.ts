@@ -5,6 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import { mkdirSync, readFileSync, writeFileSync } from "fs";
+import { gunzipSync } from "zlib";
 import { dirname, join } from "path";
 
 import {
@@ -1346,7 +1347,8 @@ server.tool(
   READ_ONLY_LOCAL,
   async ({ filePath }) => {
     try {
-      const content = readFileSync(filePath, "utf8");
+      const raw = readFileSync(filePath);
+      const content = filePath.endsWith(".gz") ? gunzipSync(raw).toString("utf8") : raw.toString("utf8");
       const result = parseSdlTrace(content);
       const summary = `Parsed ${result.parsedSignals} signal(s) from ${result.totalLines} line(s), ${result.callFlows.length} call flow(s), ${result.unparsedLines} unparsed`;
       return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
@@ -1361,13 +1363,14 @@ server.tool(
   "Extract the call flow for a specific call-id from an SDL trace. " +
     "Use sdl_trace_parse first to discover call-ids, then drill into a specific call.",
   {
-    filePath: z.string().min(1).describe("Path to SDL trace file on disk"),
+    filePath: z.string().min(1).describe("Path to SDL trace file on disk (.gz supported)"),
     callId: z.string().min(1).describe("Call ID to extract (from CI= field in SDL signals)"),
   },
   READ_ONLY_LOCAL,
   async ({ filePath, callId }) => {
     try {
-      const content = readFileSync(filePath, "utf8");
+      const raw = readFileSync(filePath);
+      const content = filePath.endsWith(".gz") ? gunzipSync(raw).toString("utf8") : raw.toString("utf8");
       const analysis = parseSdlTrace(content);
       const flow = extractCallFlow(analysis, callId);
       if (!flow) {

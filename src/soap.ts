@@ -48,6 +48,22 @@ export async function fetchServiceabilitySoap(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    // Try to extract a readable SOAP fault string instead of dumping raw XML
+    if (text) {
+      try {
+        const parsed = soapParser.parse(text);
+        const env = parsed.Envelope || parsed;
+        const body = env.Body || env;
+        const fault = body?.Fault;
+        if (fault) {
+          const faultString = fault.faultstring || fault.faultcode || fault.reason || JSON.stringify(fault);
+          throw new Error(`CUCM SOAP fault (HTTP ${res.status}): ${String(faultString)}`);
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message.startsWith("CUCM SOAP fault")) throw e;
+        // XML parse failed — fall through to raw text
+      }
+    }
     throw new Error(`CUCM Serviceability HTTP ${res.status}: ${text || res.statusText}`);
   }
 

@@ -1,5 +1,12 @@
 import { Client, type ClientChannel } from "ssh2";
 
+/** Strip ANSI/VT100 escape sequences from terminal output. */
+export function stripAnsi(text: string): string {
+  // Match: CSI sequences (\x1b[...X), OSC sequences (\x1b]...\x07), single-char escapes (\x1bX),
+  // and control chars except \n, \r, \t
+  return text.replace(/\x1b\[[0-9;]*[A-Za-z]|\x1b\][^\x07]*\x07|\x1b[^[\]]/g, "");
+}
+
 export type SshAuth = { username?: string; password?: string };
 
 export function resolveSshAuth(auth?: SshAuth): Required<SshAuth> {
@@ -14,7 +21,9 @@ export function resolveSshAuth(auth?: SshAuth): Required<SshAuth> {
 export function looksLikeCucmPrompt(text?: string): boolean {
   const t = String(text || "");
   const tail = t.slice(-80);
-  return /(?:^|\n)[A-Za-z0-9_-]+:\s*$/.test(tail);
+  // Strip ANSI escape codes and CRLF → LF before matching
+  const normalized = stripAnsi(tail).replace(/\r\n?/g, "\n");
+  return /(?:^|\n)[A-Za-z0-9_-]+:\s*$/.test(normalized);
 }
 
 export type SshExecResult = {
@@ -46,13 +55,27 @@ export async function sshExecCommand(
   let exitCode: number | null = null;
 
   try {
-    // Connect
+    // Connect — CUCM requires keyboard-interactive auth (rejects plain password).
+    // Use authHandler to skip publickey and password methods entirely,
+    // preventing "too many authentication failures" from exhausting attempts.
     await Promise.race([
       new Promise<void>((resolve, reject) => {
         client
           .on("ready", () => resolve())
           .on("error", (e: unknown) => reject(e))
-          .connect({ host, port: sshPort, username: auth.username, password: auth.password, readyTimeout: 15000 });
+          .on("keyboard-interactive", (_name, _inst, _lang, prompts, finish) => {
+            finish(prompts.map(() => auth.password));
+          })
+          .connect({
+            host,
+            port: sshPort,
+            username: auth.username,
+            tryKeyboard: true,
+            readyTimeout: 15000,
+            authHandler: (_methodsLeft, _partialSuccess, callback) => {
+              callback("keyboard-interactive");
+            },
+          });
       }),
       timeoutPromise(timeoutMs, `SSH connect timed out after ${timeoutMs}ms`),
     ]);
@@ -83,6 +106,9 @@ export async function sshExecCommand(
 
     // Extract command output (between command echo and the final prompt)
     stdout = buffer.slice(preCommandLen);
+
+    // Strip VT100/ANSI escape codes produced by the terminal emulation
+    stdout = stripAnsi(stdout);
 
     // Strip the command echo line and trailing prompt
     const lines = stdout.split("\n");
