@@ -1,6 +1,6 @@
 {
   "name": "@calltelemetry/cisco-dime-mcp",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "type": "module",
   "description": "MCP server for CUCM operational debugging: DIME logs, AXL config, RIS device status, PerfMon counters, service health, packet capture, and pcap analysis",
   "license": "MIT",

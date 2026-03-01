@@ -5,6 +5,7 @@ import {
   perfmonListInstance,
   perfmonOpenSession,
   perfmonAddCounter,
+  perfmonRemoveCounter,
   perfmonCollectSessionData,
   perfmonCloseSession,
 } from '../src/perfmon.js';
@@ -221,6 +222,31 @@ describe('perfmon', () => {
 
     await h.run(async (url) => {
       expect(url).toContain('/perfmonservice2/');
+      return responseBytes(Buffer.from(xml, 'utf8'), {
+        headers: { 'content-type': 'text/xml' },
+      });
+    });
+  });
+
+  it('perfmonRemoveCounter sends correct XML', async () => {
+    const xml = `<?xml version="1.0"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+  <soapenv:Body>
+    <ns:perfmonRemoveCounterResponse xmlns:ns="http://schemas.cisco.com/ast/soap"/>
+  </soapenv:Body>
+</soapenv:Envelope>`;
+
+    const h = withMockFetch(async () => {
+      await perfmonRemoveCounter('10.0.0.1', 'session-uuid-123', [
+        '\\\\10.0.0.1\\Cisco CallManager\\CallsActive',
+      ]);
+    });
+
+    await h.run(async (_url, init) => {
+      const body = typeof init.body === 'string' ? init.body : Buffer.from(init.body as Uint8Array).toString('utf8');
+      expect(body).toContain('perfmonRemoveCounter');
+      expect(body).toContain('<soap:SessionHandle>session-uuid-123</soap:SessionHandle>');
+      expect(body).toContain('CallsActive');
       return responseBytes(Buffer.from(xml, 'utf8'), {
         headers: { 'content-type': 'text/xml' },
       });

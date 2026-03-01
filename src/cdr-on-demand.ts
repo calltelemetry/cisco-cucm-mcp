@@ -1,4 +1,4 @@
-import { resolveAuth, resolveTarget, type DimeAuth } from "./dime.js";
+import { resolveAuth, resolveTarget, getOneFile, writeDownloadedFile, type DimeAuth } from "./dime.js";
 import { fetchServiceabilitySoap, toArray } from "./soap.js";
 
 const CDR_ON_DEMAND_PATH = "/CDRonDemandService2/services/CDRonDemandService";
@@ -144,4 +144,30 @@ function parseCdrTime(s: string): Date {
   const hour = Number(s.slice(8, 10));
   const minute = Number(s.slice(10, 12));
   return new Date(Date.UTC(year, month, day, hour, minute));
+}
+
+/**
+ * Download a CDR file by filename (as returned by cdr_get_file_list).
+ * CDR files live under /var/log/active/cm/cdr_repository/ on CUCM.
+ *
+ * @param hostOrUrl  CUCM hostname or URL
+ * @param fileName   CDR filename from cdr_get_file_list results
+ * @param outFile    Optional local output path
+ * @param auth       Optional credentials
+ * @param port       Optional port
+ */
+export async function cdrDownloadFile(
+  hostOrUrl: string,
+  fileName: string,
+  outFile?: string,
+  auth?: DimeAuth,
+  port?: number,
+): Promise<{ filePath: string; bytes: number; server: string }> {
+  // CDR files are under processed/ by default; CMR files under cmr/
+  const basePath = "/var/log/active/cm/cdr_repository/processed/";
+  const remotePath = `${basePath}${fileName}`;
+
+  const dl = await getOneFile(hostOrUrl, remotePath, auth, port);
+  const saved = writeDownloadedFile(dl, outFile);
+  return { filePath: saved.filePath, bytes: saved.bytes, server: dl.server };
 }

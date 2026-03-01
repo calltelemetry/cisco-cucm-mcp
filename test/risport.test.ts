@@ -1,5 +1,5 @@
 import { withMockFetch, responseBytes } from './helpers.js';
-import { selectCmDevice, selectCmDeviceByIp } from '../src/risport.js';
+import { selectCmDevice, selectCmDeviceAll, selectCmDeviceByIp, selectCtiItem } from '../src/risport.js';
 
 describe('risport', () => {
   const savedEnv = { user: '', pass: '' };
@@ -233,5 +233,219 @@ describe('risport', () => {
         headers: { 'content-type': 'text/xml' },
       })
     );
+  });
+
+  // --------------------------------------------------------------------------
+  // StateInfo pagination
+  // --------------------------------------------------------------------------
+
+  const page1Xml = `<?xml version="1.0"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+  <soapenv:Body>
+    <ns:selectCmDeviceResponse xmlns:ns="http://schemas.cisco.com/ast/soap">
+      <ns:selectCmDeviceReturn>
+        <SelectCmDeviceResult>
+          <TotalDevicesFound>3</TotalDevicesFound>
+          <CmNodes>
+            <item>
+              <ReturnCode>Ok</ReturnCode>
+              <Name>cucm15-pub</Name>
+              <CmDevices>
+                <item>
+                  <Name>SEP001122334455</Name>
+                  <IPAddress><item><IP>10.0.1.100</IP></item></IPAddress>
+                  <Status>Registered</Status>
+                  <Protocol>SIP</Protocol>
+                </item>
+              </CmDevices>
+            </item>
+          </CmNodes>
+        </SelectCmDeviceResult>
+        <StateInfo>cursor-page2</StateInfo>
+      </ns:selectCmDeviceReturn>
+    </ns:selectCmDeviceResponse>
+  </soapenv:Body>
+</soapenv:Envelope>`;
+
+  const page2Xml = `<?xml version="1.0"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+  <soapenv:Body>
+    <ns:selectCmDeviceResponse xmlns:ns="http://schemas.cisco.com/ast/soap">
+      <ns:selectCmDeviceReturn>
+        <SelectCmDeviceResult>
+          <TotalDevicesFound>3</TotalDevicesFound>
+          <CmNodes>
+            <item>
+              <ReturnCode>Ok</ReturnCode>
+              <Name>cucm15-pub</Name>
+              <CmDevices>
+                <item>
+                  <Name>SEP665544332211</Name>
+                  <IPAddress><item><IP>10.0.1.101</IP></item></IPAddress>
+                  <Status>Registered</Status>
+                  <Protocol>SIP</Protocol>
+                </item>
+              </CmDevices>
+            </item>
+            <item>
+              <ReturnCode>Ok</ReturnCode>
+              <Name>cucm15-sub</Name>
+              <CmDevices>
+                <item>
+                  <Name>SEPAABBCCDDEEFF</Name>
+                  <IPAddress><item><IP>10.0.2.50</IP></item></IPAddress>
+                  <Status>Registered</Status>
+                  <Protocol>SIP</Protocol>
+                </item>
+              </CmDevices>
+            </item>
+          </CmNodes>
+        </SelectCmDeviceResult>
+        <StateInfo></StateInfo>
+      </ns:selectCmDeviceReturn>
+    </ns:selectCmDeviceResponse>
+  </soapenv:Body>
+</soapenv:Envelope>`;
+
+  it('selectCmDevice extracts stateInfo from response', async () => {
+    const h = withMockFetch(async () => {
+      const r = await selectCmDevice('10.0.0.1', { maxReturnedDevices: 1000 });
+      expect(r.stateInfo).toBe('cursor-page2');
+      expect(r.totalDevicesFound).toBe(3);
+      expect(r.cmNodes[0]!.devices).toHaveLength(1);
+    });
+
+    await h.run(async () =>
+      responseBytes(Buffer.from(page1Xml, 'utf8'), {
+        headers: { 'content-type': 'text/xml' },
+      })
+    );
+  });
+
+  it('selectCmDevice returns undefined stateInfo on last page', async () => {
+    const h = withMockFetch(async () => {
+      const r = await selectCmDevice('10.0.0.1');
+      expect(r.stateInfo).toBeUndefined();
+    });
+
+    await h.run(async () =>
+      responseBytes(Buffer.from(page2Xml, 'utf8'), {
+        headers: { 'content-type': 'text/xml' },
+      })
+    );
+  });
+
+  it('selectCmDevice passes stateInfo in SOAP envelope', async () => {
+    const h = withMockFetch(async () => {
+      await selectCmDevice('10.0.0.1', { stateInfo: 'my-cursor-123' });
+    });
+
+    await h.run(async (_url, init) => {
+      const body = typeof init.body === 'string' ? init.body : Buffer.from(init.body as ArrayBuffer).toString('utf8');
+      expect(body).toContain('<soap:StateInfo>my-cursor-123</soap:StateInfo>');
+      return responseBytes(Buffer.from(page2Xml, 'utf8'), {
+        headers: { 'content-type': 'text/xml' },
+      });
+    });
+  });
+
+  it('selectCmDeviceAll auto-paginates and merges nodes', async () => {
+    let callCount = 0;
+    const h = withMockFetch(async () => {
+      const r = await selectCmDeviceAll('10.0.0.1');
+      expect(r.totalDevicesFound).toBe(3);
+      // Nodes merged by name: cucm15-pub has 2 devices (1 from each page), cucm15-sub has 1
+      expect(r.cmNodes).toHaveLength(2);
+      const pub = r.cmNodes.find(n => n.name === 'cucm15-pub');
+      const sub = r.cmNodes.find(n => n.name === 'cucm15-sub');
+      expect(pub!.devices).toHaveLength(2);
+      expect(pub!.devices[0]!.name).toBe('SEP001122334455');
+      expect(pub!.devices[1]!.name).toBe('SEP665544332211');
+      expect(sub!.devices).toHaveLength(1);
+      expect(sub!.devices[0]!.name).toBe('SEPAABBCCDDEEFF');
+    });
+
+    await h.run(async (_url, init) => {
+      callCount++;
+      const body = typeof init.body === 'string' ? init.body : Buffer.from(init.body as ArrayBuffer).toString('utf8');
+      if (callCount === 1) {
+        // First call: should have empty StateInfo
+        expect(body).toContain('<soap:StateInfo></soap:StateInfo>');
+        return responseBytes(Buffer.from(page1Xml, 'utf8'), {
+          headers: { 'content-type': 'text/xml' },
+        });
+      }
+      // Second call: should pass the cursor from page 1
+      expect(body).toContain('<soap:StateInfo>cursor-page2</soap:StateInfo>');
+      return responseBytes(Buffer.from(page2Xml, 'utf8'), {
+        headers: { 'content-type': 'text/xml' },
+      });
+    });
+
+    expect(callCount).toBe(2);
+  });
+
+  // --------------------------------------------------------------------------
+  // selectCtiItem
+  // --------------------------------------------------------------------------
+
+  it('selectCtiItem parses CTI provider response', async () => {
+    // WSDL structure: CtiNodes → item[] (CtiNode) → CtiItems → item[] (CtiItem)
+    const ctiXml = `<?xml version="1.0"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+  <soapenv:Body>
+    <ns:selectCtiItemResponse xmlns:ns="http://schemas.cisco.com/ast/soap">
+      <ns:selectCtiItemReturn>
+        <SelectCtiItemResult>
+          <TotalItemsFound>2</TotalItemsFound>
+          <CtiNodes>
+            <item>
+              <Name>cucm15-pub</Name>
+              <CtiItems>
+                <item>
+                  <Name>CTIPort1</Name>
+                  <IPAddress>10.0.0.50</IPAddress>
+                  <Status>Open</Status>
+                  <AppID>CiscoJTAPI</AppID>
+                  <UserID>jtapiuser</UserID>
+                </item>
+                <item>
+                  <Name>CTIRoutePoint1</Name>
+                  <IPAddress>10.0.0.51</IPAddress>
+                  <Status>Open</Status>
+                  <AppID>CiscoJTAPI</AppID>
+                  <UserID>jtapiuser</UserID>
+                </item>
+              </CtiItems>
+            </item>
+          </CtiNodes>
+        </SelectCtiItemResult>
+      </ns:selectCtiItemReturn>
+    </ns:selectCtiItemResponse>
+  </soapenv:Body>
+</soapenv:Envelope>`;
+
+    const h = withMockFetch(async () => {
+      const r = await selectCtiItem('10.0.0.1', { ctiMgrClass: 'Provider' });
+      expect(r.totalItemsFound).toBe(2);
+      expect(r.items).toHaveLength(2);
+      expect(r.items[0]!.name).toBe('CTIPort1');
+      expect(r.items[0]!.ipAddress).toBe('10.0.0.50');
+      expect(r.items[0]!.status).toBe('Open');
+      expect(r.items[0]!.appId).toBe('CiscoJTAPI');
+      expect(r.items[0]!.userId).toBe('jtapiuser');
+      expect(r.items[1]!.name).toBe('CTIRoutePoint1');
+    });
+
+    await h.run(async (_url, init) => {
+      const body = typeof init.body === 'string' ? init.body : Buffer.from(init.body as ArrayBuffer).toString('utf8');
+      expect(body).toContain('selectCtiItem');
+      expect(body).toContain('Provider');
+      expect(body).toContain('SelectAppBy');
+      expect(body).not.toContain('AppID>');
+      return responseBytes(Buffer.from(ctiXml, 'utf8'), {
+        headers: { 'content-type': 'text/xml' },
+      });
+    });
   });
 });

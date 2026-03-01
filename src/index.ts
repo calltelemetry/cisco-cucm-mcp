@@ -22,10 +22,11 @@ import { PacketCaptureManager, type SshAuth } from "./packetCapture.js";
 import { defaultStateStore } from "./state.js";
 import { applyPhone, updatePhonePacketCapture, axlExecute, type AxlAuth } from "./axl.js";
 import { pcapCallSummary, pcapSipCalls, pcapScppMessages, pcapRtpStreams, pcapProtocolFilter } from "./pcap-analyze.js";
-import { selectCmDevice, selectCmDeviceByIp, type SelectCmDeviceArgs } from "./risport.js";
-import { perfmonCollectCounterData, perfmonListCounter, perfmonListInstance, perfmonOpenSession, perfmonAddCounter, perfmonCollectSessionData, perfmonCloseSession } from "./perfmon.js";
+import { selectCmDevice, selectCmDeviceAll, selectCmDeviceByIp, selectCtiItem, type SelectCmDeviceArgs, type SelectCtiItemArgs } from "./risport.js";
+import { perfmonCollectCounterData, perfmonListCounter, perfmonListInstance, perfmonOpenSession, perfmonAddCounter, perfmonRemoveCounter, perfmonCollectSessionData, perfmonCloseSession } from "./perfmon.js";
 import { getServiceStatus } from "./controlcenter.js";
-import { cdrGetFileList, cdrGetFileListMinutes } from "./cdr-on-demand.js";
+import { cdrGetFileList, cdrGetFileListMinutes, cdrDownloadFile } from "./cdr-on-demand.js";
+import { showVersion, showNetworkCluster } from "./cli-tools.js";
 import { clusterHealthCheck } from "./cluster-health.js";
 import { listCertificates } from "./certificates.js";
 import { getBackupStatus, getBackupHistory } from "./drf-backup.js";
@@ -35,7 +36,7 @@ import { formatUnknownError } from "./errors.js";
 
 setupPermissiveTls();
 
-const server = new McpServer({ name: "cucm", version: "0.5.0" });
+const server = new McpServer({ name: "cucm", version: "0.6.0" });
 const captures = new PacketCaptureManager();
 const captureState = defaultStateStore();
 
@@ -483,7 +484,7 @@ server.tool(
     host: z.string().describe("CUCM host/IP"),
     port: z.number().int().min(1).max(65535).optional(),
     auth: dimeAuthSchema,
-    maxReturnedDevices: z.number().int().min(1).max(2000).optional().describe("Max devices (default 200)"),
+    maxReturnedDevices: z.number().int().min(1).max(1000).optional().describe("Max devices per page (default 200, CUCM caps at 1000)"),
     deviceClass: z.enum(["Phone", "Gateway", "H323", "CTI", "VoiceMail", "MediaResources", "HuntList", "SIPTrunk", "Unknown"])
       .optional().describe("Device class filter (default Phone)"),
     model: z.number().int().optional().describe("Model number (255 = any, default 255)"),
@@ -493,6 +494,7 @@ server.tool(
       .optional().describe("Search field (default Name)"),
     selectItems: z.array(z.string()).optional().describe('Search values (* = wildcard, e.g. ["SEP*"] or ["192.168.1.*"])'),
     protocol: z.enum(["Any", "SIP", "SCCP", "Unknown"]).optional().describe("Protocol filter (default Any)"),
+    stateInfo: z.string().optional().describe("Pagination cursor from a previous response. Omit for first page."),
     timeoutMs: z.number().int().min(1000).max(120_000).optional().describe("Request timeout (default 60000, RIS can be slow on large clusters)"),
   },
   READ_ONLY_NETWORK,
@@ -531,6 +533,66 @@ server.tool(
         timeoutMs,
       });
       const summary = `Found ${result.totalDevicesFound} device(s) matching IP ${ipAddress}`;
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "select_cm_device_all",
+  "Auto-paginating selectCmDevice — iterates with StateInfo to return ALL devices. " +
+    "Use this instead of select_cm_device when you need a complete inventory (clusters with >1000 devices).",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    deviceClass: z.enum(["Phone", "Gateway", "H323", "CTI", "VoiceMail", "MediaResources", "HuntList", "SIPTrunk", "Unknown"])
+      .optional().describe("Device class filter (default Phone)"),
+    model: z.number().int().optional().describe("Model number (255 = any, default 255)"),
+    status: z.enum(["Any", "Registered", "UnRegistered", "Rejected", "PartiallyRegistered", "Unknown"])
+      .optional().describe("Registration status filter (default Any)"),
+    selectBy: z.enum(["Name", "IPV4Address", "IPV6Address", "DirNumber", "Description", "SIPStatus"])
+      .optional().describe("Search field (default Name)"),
+    selectItems: z.array(z.string()).optional().describe('Search values (* = wildcard, e.g. ["SEP*"] or ["192.168.1.*"])'),
+    protocol: z.enum(["Any", "SIP", "SCCP", "Unknown"]).optional().describe("Protocol filter (default Any)"),
+    timeoutMs: z.number().int().min(1000).max(120_000).optional().describe("Request timeout per page (default 60000)"),
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, port, auth, timeoutMs, ...rest }) => {
+    try {
+      const result = await selectCmDeviceAll(host, { ...rest, timeoutMs }, auth as DimeAuth | undefined, port);
+      const totalDevices = result.cmNodes.reduce((sum, n) => sum + n.devices.length, 0);
+      const summary = `Found ${totalDevices} device(s) across ${result.cmNodes.length} node(s) (totalDevicesFound: ${result.totalDevicesFound})`;
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "select_cti_item",
+  "Query real-time CTI device status via RisPort70 (selectCtiItem). " +
+    "Returns CTI ports, route points, and application connections. Useful for JTAPI/CTI troubleshooting.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    ctiMgrClass: z.enum(["Provider", "Device", "Line"]).optional().describe("CTI manager class filter (default Provider)"),
+    maxItems: z.number().int().min(1).max(1000).optional().describe("Max items to return (default 200)"),
+    appId: z.string().optional().describe("Filter by CTI application ID"),
+    nodeName: z.string().optional().describe("Filter by CUCM node name"),
+    status: z.enum(["Any", "Open", "Closed", "OpenFailed", "Unknown"]).optional().describe("Status filter (default Any)"),
+    timeoutMs: z.number().int().min(1000).max(120_000).optional(),
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, port, auth, timeoutMs, ...rest }) => {
+    try {
+      const args: SelectCtiItemArgs = { ...rest, timeoutMs };
+      const result = await selectCtiItem(host, args, auth as DimeAuth | undefined, port);
+      const summary = `Found ${result.totalItemsFound} CTI item(s)`;
       return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
     } catch (e) {
       return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
@@ -1232,6 +1294,28 @@ server.tool(
   }
 );
 
+server.tool(
+  "perfmon_remove_counter",
+  "Remove counter(s) from a PerfMon session. Use to stop monitoring specific counters without closing the session.",
+  {
+    host: z.string().describe("CUCM API host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    sessionHandle: z.string().min(1).describe("Session handle from perfmon_open_session"),
+    counters: z.array(z.string().min(1)).min(1).describe('Counter paths to remove, e.g. ["\\\\\\\\host\\\\Cisco CallManager\\\\CallsActive"]'),
+    timeoutMs: z.number().int().min(1000).max(120_000).optional(),
+  },
+  WRITE_SAFE,
+  async ({ host, port, auth, sessionHandle, counters, timeoutMs }) => {
+    try {
+      await perfmonRemoveCounter(host, sessionHandle, counters, auth as DimeAuth | undefined, port, timeoutMs);
+      return { content: [{ type: "text", text: `Removed ${counters.length} counter(s) from session ${sessionHandle}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
 // ---------------------------------------------------------------------------
 // Cluster Health Check
 // ---------------------------------------------------------------------------
@@ -1377,6 +1461,86 @@ server.tool(
         return { content: [{ type: "text", text: JSON.stringify({ error: true, message: `Call-id ${callId} not found in trace` }, null, 2) }] };
       }
       return { content: [{ type: "text", text: `Call ${callId}: ${flow.signals.length} signal(s)\n\n${JSON.stringify(flow, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// SSH CLI Tools
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "show_version",
+  "Get CUCM version info via SSH (show version active). Returns active/inactive version and build.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    sshPort: z.number().int().min(1).max(65535).optional(),
+    auth: sshAuthSchema,
+    timeoutMs: z.number().int().min(5000).max(120_000).optional(),
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, sshPort, auth, timeoutMs }) => {
+    try {
+      const result = await showVersion(host, {
+        auth: auth as SshAuth | undefined,
+        sshPort,
+        timeoutMs,
+      });
+      const summary = `CUCM ${result.activeVersion} (build ${result.activeBuild})`;
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "show_network_cluster",
+  "Get CUCM cluster node topology via SSH (show network cluster). Returns all nodes with hostname, IP, type, hub/spoke, and replication status.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    sshPort: z.number().int().min(1).max(65535).optional(),
+    auth: sshAuthSchema,
+    timeoutMs: z.number().int().min(5000).max(120_000).optional(),
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, sshPort, auth, timeoutMs }) => {
+    try {
+      const result = await showNetworkCluster(host, {
+        auth: auth as SshAuth | undefined,
+        sshPort,
+        timeoutMs,
+      });
+      const summary = `${result.nodes.length} cluster node(s)`;
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// CDR Download
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "cdr_download_file",
+  "Download a CDR/CMR file by filename (from cdr_get_file_list results). " +
+    "Uses DIME to fetch the file from CUCM's CDR repository.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    fileName: z.string().min(1).describe("CDR filename from cdr_get_file_list results"),
+    outFile: z.string().optional().describe("Optional output path. Default: /tmp/cucm-mcp/<filename>"),
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, port, auth, fileName, outFile }) => {
+    try {
+      const result = await cdrDownloadFile(host, fileName, outFile, auth as DimeAuth | undefined, port);
+      return { content: [{ type: "text", text: `Downloaded ${fileName} (${result.bytes} bytes)\n\n${JSON.stringify(result, null, 2)}` }] };
     } catch (e) {
       return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
     }

@@ -1,4 +1,4 @@
-import { selectCmDevice } from "./risport.js";
+import { selectCmDeviceAll } from "./risport.js";
 import { perfmonCollectCounterData } from "./perfmon.js";
 import { getServiceStatus } from "./controlcenter.js";
 import { type DimeAuth } from "./dime.js";
@@ -64,7 +64,7 @@ export async function clusterHealthCheck(
   const errors: string[] = [];
 
   const [devicesResult, countersResult, servicesResult] = await Promise.allSettled([
-    selectCmDevice(host, { maxReturnedDevices: 2000, timeoutMs }, auth, port),
+    selectCmDeviceAll(host, { timeoutMs }, auth, port),
     perfmonCollectCounterData(host, host, "Cisco CallManager", auth, port, timeoutMs),
     getServiceStatus(host, undefined, auth, port, timeoutMs),
   ]);

@@ -8,7 +8,7 @@
 [![Install in Claude Code](https://img.shields.io/badge/Claude_Code-Install-5A28E4?logo=claude)](https://claude.ai/mcp/install?repo=calltelemetry/cisco-dime-mcp)
 [![Install in Cursor](https://img.shields.io/badge/Cursor-Install-2D2D2D?logo=cursor)](https://cursor.com/mcp/install?repo=calltelemetry/cisco-dime-mcp)
 
-MCP (Model Context Protocol) server for Cisco CUCM operational debugging — 40 tools covering logs, device inventory, performance monitoring, packet capture, call analysis, certificates, backups, and more.
+MCP (Model Context Protocol) server for Cisco CUCM operational debugging — 47 tools covering logs, device inventory, performance monitoring, packet capture, call analysis, certificates, backups, CTI status, cluster topology, and more.
 
 ## Capabilities
 
@@ -161,8 +161,10 @@ Packet capture metadata is persisted to a local JSON file for recovery after MCP
 
 | Tool | Description |
 |------|-------------|
-| `select_cm_device` | Query device registration status (phones, gateways, trunks) with filters |
+| `select_cm_device` | Query device registration status (phones, gateways, trunks) with filters. Returns `stateInfo` pagination cursor. |
 | `select_cm_device_by_ip` | Convenience: look up device registration by IP address |
+| `select_cm_device_all` | Auto-paginating query — iterates StateInfo to return ALL devices (clusters >1000 phones) |
+| `select_cti_item` | Query real-time CTI ports, route points, and application connections |
 
 ### PerfMon (Performance Monitoring)
 
@@ -174,6 +176,7 @@ Packet capture metadata is persisted to a local JSON file for recovery after MCP
 | `perfmon_open_session` | Open a PerfMon monitoring session (returns handle) |
 | `perfmon_add_counter` | Add counters to a session |
 | `perfmon_collect_session_data` | Poll counter values from a session |
+| `perfmon_remove_counter` | Remove counter(s) from a session without closing it |
 | `perfmon_close_session` | Close a session |
 
 ### CDR on Demand
@@ -182,6 +185,7 @@ Packet capture metadata is persisted to a local JSON file for recovery after MCP
 |------|-------------|
 | `cdr_get_file_list` | List CDR/CMR files by UTC time range (max 1 hour) |
 | `cdr_get_file_list_minutes` | List CDR/CMR files from last N minutes (max 60) |
+| `cdr_download_file` | Download a CDR/CMR file by filename (from `cdr_get_file_list` results) |
 
 ### ControlCenter (Service Status)
 
@@ -207,6 +211,13 @@ Packet capture metadata is persisted to a local JSON file for recovery after MCP
 |------|-------------|
 | `drf_backup_status` | Current backup job status |
 | `drf_backup_history` | Past backup history entries |
+
+### SSH CLI Tools
+
+| Tool | Description |
+|------|-------------|
+| `show_version` | Get CUCM version info (active/inactive version + build) |
+| `show_network_cluster` | Get cluster node topology — hostname, IP, type, hub/spoke, replication status |
 
 ### Packet Capture (SSH + DIME)
 
@@ -811,6 +822,33 @@ curl -k -u "$CUCM_DIME_USERNAME:$CUCM_DIME_PASSWORD" \
   "https://<cucm-host>:8443/logcollectionservice2/services/LogCollectionPortTypeService?wsdl" \
   -o /dev/null -w "%{http_code}\n"
 ```
+
+## v0.6.0 Changes
+
+### New Tools (7)
+
+- **RIS Pagination** — `select_cm_device_all` auto-paginates via StateInfo to return ALL devices (clusters >1000 phones). `select_cm_device` now returns `stateInfo` cursor for manual pagination.
+- **CTI Status** — `select_cti_item` queries real-time CTI ports, route points, and application connections via RisPort70
+- **PerfMon** — `perfmon_remove_counter` removes counters from a session without closing it (completes the session lifecycle)
+- **SSH CLI** — `show_version` and `show_network_cluster` for version info and cluster topology
+- **CDR Download** — `cdr_download_file` downloads CDR/CMR files by filename (closes the CDR workflow)
+
+### Improvements
+
+- **Rate Limit Handling** — All Serviceability SOAP calls (RIS, PerfMon, ControlCenter) now auto-retry on CUCM rate limits (HTTP 503 or "Exceeded allowed rate" SOAP faults) with exponential backoff: 5s → 10s → 20s (3 retries max).
+
+### Bug Fixes
+
+| Fix | Details |
+|-----|---------|
+| RIS StateInfo pagination | `selectCmDevice` now extracts and returns the `StateInfo` pagination cursor from SOAP responses. Previously hardcoded empty, silently truncating results at 1000 devices. |
+| RIS maxReturnedDevices cap | Fixed from 2000 to 1000 (CUCM's actual per-call limit) |
+| cluster_health_check pagination | Now uses `selectCmDeviceAll` instead of single-page query — gets all devices instead of capping at 1000 |
+| CUCM 15 `show network cluster` | Parser handles headerless IP-first format used by CUCM 15 |
+
+### Test Suite
+
+181 tests across 17 files (15 new tests for pagination, CTI items, perfmon remove, CLI parsers).
 
 ## v0.5.0 Changes
 

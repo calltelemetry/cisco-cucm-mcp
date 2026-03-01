@@ -188,6 +188,23 @@ function buildAddCounterEnvelope(sessionHandle: string, counters: string[]): str
   );
 }
 
+function buildRemoveCounterEnvelope(sessionHandle: string, counters: string[]): string {
+  const counterItems = counters
+    .map((c) => `<soap:Counter><soap:Name>${escapeXml(c)}</soap:Name></soap:Counter>`)
+    .join("");
+  return (
+    '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soap="http://schemas.cisco.com/ast/soap">' +
+    "<soapenv:Header/>" +
+    "<soapenv:Body>" +
+    "<soap:perfmonRemoveCounter>" +
+    `<soap:SessionHandle>${escapeXml(sessionHandle)}</soap:SessionHandle>` +
+    `<soap:ArrayOfCounter>${counterItems}</soap:ArrayOfCounter>` +
+    "</soap:perfmonRemoveCounter>" +
+    "</soapenv:Body>" +
+    "</soapenv:Envelope>"
+  );
+}
+
 function buildCollectSessionDataEnvelope(sessionHandle: string): string {
   return (
     '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soap="http://schemas.cisco.com/ast/soap">' +
@@ -258,6 +275,29 @@ export async function perfmonAddCounter(
     resolvedAuth,
     PERFMON_PATH,
     "perfmonAddCounter",
+    envelope,
+    timeoutMs ?? 30_000,
+  );
+}
+
+export async function perfmonRemoveCounter(
+  hostOrUrl: string,
+  sessionHandle: string,
+  counters: string[],
+  auth?: DimeAuth,
+  port?: number,
+  timeoutMs?: number,
+): Promise<void> {
+  const target = resolveTarget(hostOrUrl, port);
+  const resolvedAuth = resolveAuth(auth);
+  const envelope = buildRemoveCounterEnvelope(sessionHandle, counters);
+
+  await fetchServiceabilitySoap(
+    target.host,
+    target.port!,
+    resolvedAuth,
+    PERFMON_PATH,
+    "perfmonRemoveCounter",
     envelope,
     timeoutMs ?? 30_000,
   );
