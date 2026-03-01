@@ -14,11 +14,13 @@ MCP (Model Context Protocol) server for Cisco CUCM operational debugging — 47 
 
 - **DIME Log Collection** — Query and download trace/log files via CUCM DIME SOAP services on `:8443`
 - **Syslog** — Query and download system log files via DIME
-- **RisPort70 (Real-time Device Status)** — Query phone/gateway/trunk registration status via selectCmDevice
-- **PerfMon (Performance Monitoring)** — Collect real-time counters, open monitoring sessions for continuous polling
+- **RisPort70 (Real-time Device Status)** — Query phone/gateway/trunk registration status via selectCmDevice, auto-paginating for large clusters (>1000 devices)
+- **CTI Status** — Query real-time CTI ports, route points, and application connections via selectCtiItem
+- **PerfMon (Performance Monitoring)** — Collect real-time counters, open monitoring sessions for continuous polling, add/remove counters
 - **ControlCenter (Service Status)** — Query CUCM service health: Started, Stopped, Not Activated (read-only)
-- **CDR on Demand** — List CDR/CMR files by time range via CDRonDemandService
+- **CDR on Demand** — List and download CDR/CMR files by time range via CDRonDemandService + DIME
 - **Cluster Health Check** — One-shot health: devices + counters + services in parallel with partial failure tolerance
+- **SSH CLI Tools** — Version info, cluster topology via CUCM CLI over SSH
 - **Certificate Status** — List TLS certificates (own/trust) via CUCM CLI over SSH
 - **DRF Backup Status** — Check backup job status and history via CUCM CLI over SSH
 - **Packet Capture** — Start/stop captures via CUCM CLI over SSH, download `.cap` files via DIME
@@ -567,6 +569,74 @@ Session 087b08be-1585-11f1-8000-000c2917beb2 closed
 "No file found within the specified time range"
 ```
 
+### CUCM Version Info (SSH CLI)
+
+```
+→ show_version({ host: "192.168.125.10" })
+
+{
+  "activeVersion": "15.0.1.12900",
+  "activeBuild": "234",
+  "inactiveVersion": "",
+  "inactiveBuild": ""
+}
+```
+
+### Cluster Topology (SSH CLI)
+
+```
+→ show_network_cluster({ host: "192.168.125.10" })
+
+{
+  "nodes": [
+    {
+      "id": "",
+      "hostname": "cucm15-cluster1",
+      "ipAddress": "192.168.125.10",
+      "type": "Publisher",
+      "replicationStatus": "authenticated"
+    }
+  ]
+}
+```
+
+### Auto-Paginate All Devices (RIS)
+
+For clusters with >1000 phones, `select_cm_device_all` automatically iterates StateInfo pages:
+
+```
+→ select_cm_device_all({ host: "192.168.125.10" })
+
+{
+  "totalDevicesFound": 3,
+  "cmNodes": [
+    {
+      "name": "cucm15-cluster1",
+      "returnCode": "Ok",
+      "devices": [
+        { "name": "SEP0022905C7710", "ipAddress": "192.168.125.178", "status": "Registered", "protocol": "SCCP" },
+        { "name": "SEP505C885DF37F", "ipAddress": "192.168.125.234", "status": "Registered", "protocol": "SIP"  },
+        { "name": "SEP000832C78E0F", "ipAddress": "192.168.125.85",  "status": "Registered", "protocol": "SIP"  }
+      ]
+    }
+  ]
+}
+```
+
+### PerfMon Remove Counter
+
+Remove specific counters from a session without closing it:
+
+```
+→ perfmon_remove_counter({
+    host: "192.168.125.10",
+    sessionHandle: "963603f4-15b0-11f1-8000-000c2917beb2",
+    counters: ["\\\\192.168.125.10\\Cisco CallManager\\CallsActive"]
+  })
+
+Removed 1 counter(s) from session 963603f4-15b0-11f1-8000-000c2917beb2
+```
+
 ### SDL Trace Analysis (Local)
 
 **1. Download an SDL trace:**
@@ -737,10 +807,13 @@ Session 087b08be-1585-11f1-8000-000c2917beb2 closed
 ### Cluster Health Assessment
 
 ```
-1. cluster_health_check     → One-shot: devices + counters + services (parallel)
-2. cert_list                → TLS certificate inventory (own + trust)
-3. drf_backup_status        → Current backup job status
-4. drf_backup_history       → Last successful backup date
+1. show_version             → CUCM version + build number
+2. show_network_cluster     → Node topology, replication status
+3. cluster_health_check     → One-shot: devices + counters + services (parallel)
+4. select_cm_device_all     → Full device inventory (auto-paginates >1000 devices)
+5. cert_list                → TLS certificate inventory (own + trust)
+6. drf_backup_status        → Current backup job status
+7. drf_backup_history       → Last successful backup date
 ```
 
 ### Log Investigation
@@ -759,7 +832,8 @@ Session 087b08be-1585-11f1-8000-000c2917beb2 closed
 1. perfmon_open_session     → Get session handle
 2. perfmon_add_counter      → Subscribe to specific counters
 3. perfmon_collect_session_data → Poll (repeat as needed)
-4. perfmon_close_session    → Cleanup when done
+4. perfmon_remove_counter   → Remove counters without closing session
+5. perfmon_close_session    → Cleanup when done
 ```
 
 ### Packet Capture + Analysis
