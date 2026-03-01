@@ -144,7 +144,7 @@ export function parseShowNetworkCluster(stdout: string): ClusterNode[] {
   const colPositions: number[] = [];
 
   // Try standard headers first
-  let headersUsed = colHeaders;
+  let _headersUsed = colHeaders;
   for (const hdr of colHeaders) {
     const idx = headerLine.indexOf(hdr);
     if (idx >= 0) colPositions.push(idx);
@@ -153,7 +153,7 @@ export function parseShowNetworkCluster(stdout: string): ClusterNode[] {
   // If too few, try alt headers
   if (colPositions.length < 3) {
     colPositions.length = 0;
-    headersUsed = altHeaders;
+    _headersUsed = altHeaders;
     for (const hdr of altHeaders) {
       const idx = headerLine.indexOf(hdr);
       if (idx >= 0) colPositions.push(idx);

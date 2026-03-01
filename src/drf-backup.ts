@@ -131,7 +131,7 @@ export function parseBackupHistoryOutput(output: string): BackupHistoryEntry[] {
       // while some versions use "component | date | status | device"
       // Heuristic: if token1 is a device type (NETWORK, SFTP, Local, etc.) or doesn't
       // look like a date, assume the CUCM 15 column order.
-      const looksLikeDate = /^\d{2}[/\-]\d{2}[/\-]\d{2,4}|^\d{4}[/\-]\d{2}|^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s/i.test(token1);
+      const looksLikeDate = /^\d{2}[/-]\d{2}[/-]\d{2,4}|^\d{4}[/-]\d{2}|^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s/i.test(token1);
 
       let date: string;
       let status: string;

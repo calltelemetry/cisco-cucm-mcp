@@ -1,12 +1,12 @@
 {
-  "name": "@calltelemetry/cisco-dime-mcp",
+  "name": "@calltelemetry/cisco-cucm-mcp",
   "version": "0.6.0",
   "type": "module",
   "description": "MCP server for CUCM operational debugging: DIME logs, AXL config, RIS device status, PerfMon counters, service health, packet capture, and pcap analysis",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/calltelemetry/cisco-dime-mcp.git"
+    "url": "git+https://github.com/calltelemetry/cisco-cucm-mcp.git"
   },
   "bin": "build/index.js",
   "publishConfig": {

@@ -47,9 +47,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@calltelemetry/cisco-dime-mcp@workspace:.":
+"@calltelemetry/cisco-cucm-mcp@workspace:.":
   version: 0.0.0-use.local
-  resolution: "@calltelemetry/cisco-dime-mcp@workspace:."
+  resolution: "@calltelemetry/cisco-cucm-mcp@workspace:."
   dependencies:
     "@eslint/js": "npm:^9.39.3"
     "@modelcontextprotocol/sdk": "npm:^1.27.1"
@@ -67,7 +67,7 @@ __metadata:
     vitest: "npm:^4.0.18"
     zod: "npm:^3.24.2"
   bin:
-    cisco-dime-mcp: build/index.js
+    cisco-cucm-mcp: build/index.js
   languageName: unknown
   linkType: soft
 

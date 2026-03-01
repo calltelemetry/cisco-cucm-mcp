@@ -4,6 +4,7 @@ import { Client, type ClientChannel } from "ssh2";
 export function stripAnsi(text: string): string {
   // Match: CSI sequences (\x1b[...X), OSC sequences (\x1b]...\x07), single-char escapes (\x1bX),
   // and control chars except \n, \r, \t
+  // eslint-disable-next-line no-control-regex
   return text.replace(/\x1b\[[0-9;]*[A-Za-z]|\x1b\][^\x07]*\x07|\x1b[^[\]]/g, "");
 }
 

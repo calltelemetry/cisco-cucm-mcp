@@ -1,12 +1,12 @@
-# Cisco DIME MCP
+# Cisco CUCM MCP
 
-[![npm](https://img.shields.io/npm/v/@calltelemetry/cisco-dime-mcp)](https://www.npmjs.com/package/@calltelemetry/cisco-dime-mcp)
-[![CI](https://github.com/calltelemetry/cisco-dime-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/calltelemetry/cisco-dime-mcp/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/calltelemetry/cisco-dime-mcp/branch/main/graph/badge.svg)](https://codecov.io/gh/calltelemetry/cisco-dime-mcp)
+[![npm](https://img.shields.io/npm/v/@calltelemetry/cisco-cucm-mcp)](https://www.npmjs.com/package/@calltelemetry/cisco-cucm-mcp)
+[![CI](https://github.com/calltelemetry/cisco-cucm-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/calltelemetry/cisco-cucm-mcp/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/calltelemetry/cisco-cucm-mcp/branch/main/graph/badge.svg)](https://codecov.io/gh/calltelemetry/cisco-cucm-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-[![Install in Claude Code](https://img.shields.io/badge/Claude_Code-Install-5A28E4?logo=claude)](https://claude.ai/mcp/install?repo=calltelemetry/cisco-dime-mcp)
-[![Install in Cursor](https://img.shields.io/badge/Cursor-Install-2D2D2D?logo=cursor)](https://cursor.com/mcp/install?repo=calltelemetry/cisco-dime-mcp)
+[![Install in Claude Code](https://img.shields.io/badge/Claude_Code-Install-5A28E4?logo=claude)](https://claude.ai/mcp/install?repo=calltelemetry/cisco-cucm-mcp)
+[![Install in Cursor](https://img.shields.io/badge/Cursor-Install-2D2D2D?logo=cursor)](https://cursor.com/mcp/install?repo=calltelemetry/cisco-cucm-mcp)
 
 MCP (Model Context Protocol) server for Cisco CUCM operational debugging — 47 tools covering logs, device inventory, performance monitoring, packet capture, call analysis, certificates, backups, CTI status, cluster topology, and more.
 
@@ -30,7 +30,7 @@ MCP (Model Context Protocol) server for Cisco CUCM operational debugging — 47 
 ## Installation
 
 ```bash
-npx @calltelemetry/cisco-dime-mcp
+npx @calltelemetry/cisco-cucm-mcp
 ```
 
 ## Quick Start
@@ -38,7 +38,7 @@ npx @calltelemetry/cisco-dime-mcp
 ### Claude Code
 
 ```bash
-claude mcp add cucm -- npx -y @calltelemetry/cisco-dime-mcp@latest
+claude mcp add cucm -- npx -y @calltelemetry/cisco-cucm-mcp@latest
 ```
 
 ### Manual Configuration
@@ -51,7 +51,7 @@ Add to your `.mcp.json` (credentials come from env vars — see [Auth Best Pract
     "cucm": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@calltelemetry/cisco-dime-mcp@latest"]
+      "args": ["-y", "@calltelemetry/cisco-cucm-mcp@latest"]
     }
   }
 }
@@ -65,7 +65,7 @@ Or pass credentials explicitly via the `env` block (not recommended — prefer s
     "cucm": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@calltelemetry/cisco-dime-mcp@latest"],
+      "args": ["-y", "@calltelemetry/cisco-cucm-mcp@latest"],
       "env": {
         "CUCM_DIME_USERNAME": "<dime-user>",
         "CUCM_DIME_PASSWORD": "<dime-pass>",
@@ -867,7 +867,7 @@ Then your `.mcp.json` stays credential-free:
     "cucm": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@calltelemetry/cisco-dime-mcp@latest"]
+      "args": ["-y", "@calltelemetry/cisco-cucm-mcp@latest"]
     }
   }
 }
