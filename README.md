@@ -5,6 +5,9 @@
 [![codecov](https://codecov.io/gh/calltelemetry/cisco-dime-mcp/branch/main/graph/badge.svg)](https://codecov.io/gh/calltelemetry/cisco-dime-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+[![Install in Claude Code](https://img.shields.io/badge/Claude_Code-Install-5A28E4?logo=claude)](https://claude.ai/mcp/install?repo=calltelemetry/cisco-dime-mcp)
+[![Install in Cursor](https://img.shields.io/badge/Cursor-Install-2D2D2D?logo=cursor)](https://cursor.com/mcp/install?repo=calltelemetry/cisco-dime-mcp)
+
 MCP (Model Context Protocol) server for Cisco CUCM operational debugging.
 
 ## Capabilities
@@ -12,10 +15,15 @@ MCP (Model Context Protocol) server for Cisco CUCM operational debugging.
 - **DIME Log Collection** — Query and download trace/log files via CUCM DIME SOAP services on `:8443`
 - **Syslog** — Query and download system log files via DIME
 - **RisPort70 (Real-time Device Status)** — Query phone/gateway/trunk registration status via selectCmDevice
-- **PerfMon (Performance Monitoring)** — Collect real-time counters (call counts, CPU, memory, SIP stats)
+- **PerfMon (Performance Monitoring)** — Collect real-time counters, open monitoring sessions for continuous polling
 - **ControlCenter (Service Status)** — Query CUCM service health: Started, Stopped, Not Activated (read-only)
+- **CDR on Demand** — List CDR/CMR files by time range via CDRonDemandService
+- **Cluster Health Check** — One-shot health: devices + counters + services in parallel with partial failure tolerance
+- **Certificate Status** — List TLS certificates (own/trust) via CUCM CLI over SSH
+- **DRF Backup Status** — Check backup job status and history via CUCM CLI over SSH
 - **Packet Capture** — Start/stop captures via CUCM CLI over SSH, download `.cap` files via DIME
 - **Pcap Analysis** — Analyze captured pcaps locally via tshark: SIP flows, SCCP messages, RTP quality metrics
+- **SDL Trace Parser** — Parse SDL trace files into structured signals and call flows (local analysis)
 
 ## Installation
 
@@ -33,7 +41,21 @@ claude mcp add cucm -- npx -y @calltelemetry/cisco-dime-mcp@latest
 
 ### Manual Configuration
 
-Add to your `.mcp.json`:
+Add to your `.mcp.json` (credentials come from env vars — see [Auth Best Practices](#auth-best-practices)):
+
+```json
+{
+  "mcpServers": {
+    "cucm": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@calltelemetry/cisco-dime-mcp@latest"]
+    }
+  }
+}
+```
+
+Or pass credentials explicitly via the `env` block (not recommended — prefer shell env vars):
 
 ```json
 {
@@ -149,12 +171,42 @@ Packet capture metadata is persisted to a local JSON file for recovery after MCP
 | `perfmon_collect_counter_data` | Collect counter values for a PerfMon object (e.g. "Cisco CallManager") |
 | `perfmon_list_counter` | Discover available PerfMon objects and counters |
 | `perfmon_list_instance` | List instances of a PerfMon object |
+| `perfmon_open_session` | Open a PerfMon monitoring session (returns handle) |
+| `perfmon_add_counter` | Add counters to a session |
+| `perfmon_collect_session_data` | Poll counter values from a session |
+| `perfmon_close_session` | Close a session |
+
+### CDR on Demand
+
+| Tool | Description |
+|------|-------------|
+| `cdr_get_file_list` | List CDR/CMR files by UTC time range (max 1 hour) |
+| `cdr_get_file_list_minutes` | List CDR/CMR files from last N minutes (max 60) |
 
 ### ControlCenter (Service Status)
 
 | Tool | Description |
 |------|-------------|
 | `get_service_status` | Query CUCM service status — Started, Stopped, Not Activated (read-only) |
+
+### Cluster Health
+
+| Tool | Description |
+|------|-------------|
+| `cluster_health_check` | One-shot health: devices + counters + services in parallel |
+
+### Certificate Status (SSH CLI)
+
+| Tool | Description |
+|------|-------------|
+| `cert_list` | List TLS certificates on a CUCM node (own/trust/both) |
+
+### DRF Backup Status (SSH CLI)
+
+| Tool | Description |
+|------|-------------|
+| `drf_backup_status` | Current backup job status |
+| `drf_backup_history` | Past backup history entries |
 
 ### Packet Capture (SSH + DIME)
 
@@ -180,6 +232,13 @@ These tools analyze downloaded `.cap` files so an LLM can reason about VoIP call
 | `pcap_sccp_messages` | SCCP/Skinny messages with human-readable type names |
 | `pcap_rtp_streams` | RTP quality per stream: jitter, packet loss, codec, duration |
 | `pcap_protocol_filter` | Arbitrary tshark display filter for deeper investigation |
+
+### SDL Trace Parser (Local Analysis)
+
+| Tool | Description |
+|------|-------------|
+| `sdl_trace_parse` | Parse SDL trace into structured signals and call flows |
+| `sdl_trace_call_flow` | Extract call flow for a specific call-id |
 
 ### Utility
 
@@ -467,13 +526,52 @@ Examples below are from a live CUCM 15.0 cluster.
 6. pcap_rtp_streams         → Audio quality: jitter, loss, codec
 ```
 
-### Auth Note
+### Auth Best Practices
+
+**Use environment variables for credentials** — never hardcode them in `.mcp.json` or tool parameters. Set credentials in your shell profile (e.g. `~/.zshrc`) or use a secrets manager:
+
+```bash
+# In ~/.zshrc
+export CUCM_DIME_USERNAME="your-cucm-admin"
+export CUCM_DIME_PASSWORD="your-password"
+export CUCM_SSH_USERNAME="your-ssh-user"
+export CUCM_SSH_PASSWORD="your-ssh-password"
+```
+
+Then your `.mcp.json` stays credential-free:
+
+```json
+{
+  "mcpServers": {
+    "cucm": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@calltelemetry/cisco-dime-mcp@latest"]
+    }
+  }
+}
+```
+
+All tools accept optional `auth` parameters as overrides, but env vars are the recommended approach. Tool parameters are visible in LLM conversation history.
+
+### Auth Fallback Chains
+
+Each API resolves credentials through its own fallback chain:
+
+| API | Fallback Order |
+|-----|---------------|
+| **DIME** | `auth` param → `CUCM_DIME_USERNAME` → `CUCM_USERNAME` |
+| **AXL** | `auth` param → `CUCM_AXL_USERNAME` → `CUCM_USERNAME` → `CUCM_DIME_USERNAME` |
+| **SSH** | `auth` param → `CUCM_SSH_USERNAME` *(no fallback)* |
+| **RIS/PerfMon/ControlCenter** | Same as DIME |
+
+Set `CUCM_USERNAME` / `CUCM_PASSWORD` as a shared default, then override per-API only when credentials differ.
 
 CUCM deployments vary — SSH and DIME may accept different credentials:
 
 ```bash
 # Verify DIME credentials (WSDL should return HTTP 200)
-curl -k -u "<user>:<pass>" \
+curl -k -u "$CUCM_DIME_USERNAME:$CUCM_DIME_PASSWORD" \
   "https://<cucm-host>:8443/logcollectionservice2/services/LogCollectionPortTypeService?wsdl" \
   -o /dev/null -w "%{http_code}\n"
 ```

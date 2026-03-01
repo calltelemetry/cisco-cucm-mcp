@@ -503,11 +503,11 @@ export async function pcapScppMessages(filePath: string, deviceFilter?: string):
     "-e", "ip.src",
     "-e", "ip.dst",
     "-e", "skinny.messageId",
-    "-e", "skinny.CallingPartyName",
-    "-e", "skinny.CallingPartyNumber",
+    "-e", "skinny.callingPartyName",
+    "-e", "skinny.callingPartyNumber",
     "-e", "skinny.calledPartyName",
-    "-e", "skinny.calledPartyNumber",
-    "-e", "skinny.callIdentifier",
+    "-e", "skinny.calledParty",
+    "-e", "skinny.callReference",
     "-e", "skinny.lineInstance",
     "-e", "skinny.callState",
     "-E", "header=n",
@@ -604,13 +604,15 @@ export async function pcapRtpStreams(filePath: string, ssrcFilter?: string): Pro
       continue;
     }
     if (!inTable) continue;
-    if (!line.trim() || line.startsWith("  Src")) continue;
+    if (!line.trim() || line.startsWith("  Src") || line.includes("Start:") || line.includes("End:")) continue;
 
     // Parse whitespace-separated fields
     const parts = line.trim().split(/\s+/);
     if (parts.length < 10) continue;
 
+    // Skip any remaining header-like lines (e.g., non-IP data)
     const srcAddr = parts[0] ?? '';
+    if (!/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(srcAddr)) continue;
     const srcPort = parts[1] ?? '';
     const dstAddr = parts[2] ?? '';
     const dstPort = parts[3] ?? '';

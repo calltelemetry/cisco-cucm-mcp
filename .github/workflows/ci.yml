@@ -26,7 +26,7 @@ jobs:
         run: yarn typecheck
 
       - name: Lint
-        run: yarn lint --max-warnings=50
+        run: yarn lint --max-warnings=20
 
       - name: Test with coverage
         run: yarn vitest run --coverage
@@ -35,7 +35,7 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
+          fail_ci_if_error: true
 
       - name: Build
         run: yarn build

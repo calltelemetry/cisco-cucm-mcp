@@ -1,4 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
+import { basicAuthHeader, escapeXml } from "./soap.js";
+import { formatUnknownError } from "./errors.js";
 
 export type AxlAuth = { username?: string; password?: string };
 
@@ -14,29 +16,6 @@ const parser = new XMLParser({
   removeNSPrefix: true,
   trimValues: true,
 });
-
-function basicAuthHeader(username: string, password: string): string {
-  return `Basic ${Buffer.from(`${username}:${password}`, "utf8").toString("base64")}`;
-}
-
-function escapeXml(s: string): string {
-  return s
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
-
-function formatUnknownError(e: unknown): string {
-  if (e instanceof Error) return e.message;
-  if (typeof e === "string") return e;
-  try {
-    return JSON.stringify(e);
-  } catch {
-    return String(e);
-  }
-}
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);

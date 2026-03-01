@@ -3,7 +3,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { mkdirSync, writeFileSync } from "fs";
+import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
+import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 
 import {
@@ -21,56 +22,47 @@ import { defaultStateStore } from "./state.js";
 import { applyPhone, updatePhonePacketCapture, axlExecute, type AxlAuth } from "./axl.js";
 import { pcapCallSummary, pcapSipCalls, pcapScppMessages, pcapRtpStreams, pcapProtocolFilter } from "./pcap-analyze.js";
 import { selectCmDevice, selectCmDeviceByIp, type SelectCmDeviceArgs } from "./risport.js";
-import { perfmonCollectCounterData, perfmonListCounter, perfmonListInstance } from "./perfmon.js";
+import { perfmonCollectCounterData, perfmonListCounter, perfmonListInstance, perfmonOpenSession, perfmonAddCounter, perfmonCollectSessionData, perfmonCloseSession } from "./perfmon.js";
 import { getServiceStatus } from "./controlcenter.js";
+import { cdrGetFileList, cdrGetFileListMinutes } from "./cdr-on-demand.js";
+import { clusterHealthCheck } from "./cluster-health.js";
+import { listCertificates } from "./certificates.js";
+import { getBackupStatus, getBackupHistory } from "./drf-backup.js";
+import { parseSdlTrace, extractCallFlow } from "./sdl-trace.js";
+import { setupPermissiveTls } from "./tls.js";
+import { formatUnknownError } from "./errors.js";
 
-// Default to accepting self-signed/invalid certs (common on CUCM lab/dev).
-// Opt back into strict verification with CUCM_MCP_TLS_MODE=strict.
-const tlsMode = (process.env.CUCM_MCP_TLS_MODE || process.env.MCP_TLS_MODE || "").toLowerCase();
-const strictTls = tlsMode === "strict" || tlsMode === "verify";
-// Default: permissive TLS (accept self-signed). This is the common CUCM lab posture.
-// Set CUCM_MCP_TLS_MODE=strict to enforce verification.
-if (!strictTls) process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+setupPermissiveTls();
 
-const server = new McpServer({ name: "cucm", version: "0.4.0" });
+const server = new McpServer({ name: "cucm", version: "0.5.0" });
 const captures = new PacketCaptureManager();
 const captureState = defaultStateStore();
 
-const dimeAuthSchema = z
+/** Shared auth schema: when provided, both username and password are required. */
+const authSchema = z
   .object({
-    username: z.string().optional(),
-    password: z.string().optional(),
+    username: z.string().min(1),
+    password: z.string().min(1),
   })
-  .optional();
+  .optional()
+  .describe("Credentials override (optional — defaults to env vars)");
 
-const sshAuthSchema = z
-  .object({
-    username: z.string().optional(),
-    password: z.string().optional(),
-  })
-  .optional();
+// Aliases for readability at tool registration sites
+const dimeAuthSchema = authSchema;
+const sshAuthSchema = authSchema;
+const axlAuthSchema = authSchema;
 
-const axlAuthSchema = z
-  .object({
-    username: z.string().optional(),
-    password: z.string().optional(),
-  })
-  .optional();
-
-function formatUnknownError(e: unknown): string {
-  if (e instanceof Error) return e.message;
-  if (typeof e === "string") return e;
-  try {
-    return JSON.stringify(e);
-  } catch {
-    return String(e);
-  }
-}
+// Tool annotation presets
+const READ_ONLY_NETWORK: ToolAnnotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
+const READ_ONLY_LOCAL: ToolAnnotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
+const WRITE_DESTRUCTIVE: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
+const WRITE_SAFE: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true };
 
 server.tool(
   "guess_timezone_string",
   "Build a best-effort DIME timezone string for selectLogFiles.",
   {},
+  READ_ONLY_LOCAL,
   async () => ({
     content: [{ type: "text", text: JSON.stringify({ timezone: guessTimezoneString(new Date()) }, null, 2) }],
   })
@@ -84,6 +76,7 @@ server.tool(
     port: z.number().int().min(1).max(65535).optional(),
     auth: dimeAuthSchema,
   },
+  READ_ONLY_NETWORK,
   async ({ host, port, auth }) => {
     const result = await listNodeServiceLogs(host, auth as DimeAuth | undefined, port);
     return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
@@ -104,6 +97,7 @@ server.tool(
     toDate: z.string(),
     timezone: z.string(),
   },
+  READ_ONLY_NETWORK,
   async ({ host, port, auth, serviceLogs, systemLogs, searchStr, fromDate, toDate, timezone }) => {
     const result = await selectLogs(
       host,
@@ -128,6 +122,7 @@ server.tool(
     searchStr: z.string().optional(),
     timezone: z.string().optional(),
   },
+  READ_ONLY_NETWORK,
   async ({ host, port, auth, minutesBack, serviceLogs, systemLogs, searchStr, timezone }) => {
     const result = await selectLogsMinutes(
       host,
@@ -156,6 +151,7 @@ server.tool(
     searchStr: z.string().optional(),
     timezone: z.string().optional(),
   },
+  READ_ONLY_NETWORK,
   async ({ host, port, auth, minutesBack, systemLog, searchStr, timezone }) => {
     const result = await selectLogsMinutes(
       host,
@@ -192,6 +188,7 @@ server.tool(
     apply: z.boolean().optional().describe("Run applyPhone after updatePhone (default true)"),
     timeoutMs: z.number().int().min(1000).max(5 * 60_000).optional().describe("AXL request timeout"),
   },
+  WRITE_DESTRUCTIVE,
   async ({ host, port, axlVersion, auth, deviceName, mode, durationSeconds, apply, timeoutMs }) => {
     const update = await updatePhonePacketCapture(host, {
       deviceName,
@@ -260,6 +257,7 @@ server.tool(
     includeRequestXml: z.boolean().optional().describe("Include SOAP request XML in response (debug)"),
     includeResponseXml: z.boolean().optional().describe("Include SOAP response XML in response (debug)"),
   },
+  WRITE_DESTRUCTIVE,
   async ({
     operation,
     data,
@@ -326,6 +324,7 @@ server.tool(
         );
       }
 
+      // Never echo credentials in error responses — omit cucm_username/cucm_password
       const nextToolCalls = [
         ...(getOp
           ? [
@@ -336,8 +335,6 @@ server.tool(
                   cucm_host,
                   cucm_port,
                   cucm_version,
-                  cucm_username,
-                  cucm_password,
                   includeResponseXml: true,
                 },
                 note:
@@ -352,8 +349,6 @@ server.tool(
             cucm_host,
             cucm_port,
             cucm_version,
-            cucm_username,
-            cucm_password,
             includeRequestXml: true,
             includeResponseXml: true,
           },
@@ -395,6 +390,7 @@ server.tool(
     cucm_password: z.string().optional().describe("AXL password (optional if env CUCM_AXL_PASSWORD is set)"),
     outFile: z.string().optional().describe("Optional output file path (default /tmp/cucm-mcp/axl.wsdl)")
   },
+  READ_ONLY_NETWORK,
   async ({ cucm_host, cucm_port, cucm_username, cucm_password, outFile }) => {
     const port = cucm_port ?? 8443;
     const user = cucm_username || process.env.CUCM_AXL_USERNAME || process.env.CUCM_USERNAME;
@@ -498,6 +494,7 @@ server.tool(
     protocol: z.enum(["Any", "SIP", "SCCP", "Unknown"]).optional().describe("Protocol filter (default Any)"),
     timeoutMs: z.number().int().min(1000).max(120_000).optional().describe("Request timeout (default 60000, RIS can be slow on large clusters)"),
   },
+  READ_ONLY_NETWORK,
   async ({ host, port, auth, timeoutMs, ...rest }) => {
     try {
       const args: SelectCmDeviceArgs = { ...rest, timeoutMs };
@@ -522,6 +519,7 @@ server.tool(
     status: z.enum(["Any", "Registered", "UnRegistered", "Rejected", "PartiallyRegistered", "Unknown"]).optional(),
     timeoutMs: z.number().int().min(1000).max(120_000).optional(),
   },
+  READ_ONLY_NETWORK,
   async ({ host, port, auth, ipAddress, maxDevices, status, timeoutMs }) => {
     try {
       const result = await selectCmDeviceByIp(host, ipAddress, {
@@ -555,6 +553,7 @@ server.tool(
     object: z.string().min(1).describe('PerfMon object name, e.g. "Cisco CallManager"'),
     timeoutMs: z.number().int().min(1000).max(120_000).optional(),
   },
+  READ_ONLY_NETWORK,
   async ({ host, port, auth, perfmonHost, object, timeoutMs }) => {
     try {
       const result = await perfmonCollectCounterData(host, perfmonHost, object, auth as DimeAuth | undefined, port, timeoutMs);
@@ -577,6 +576,7 @@ server.tool(
     perfmonHost: z.string().describe("Target CUCM node hostname/IP"),
     timeoutMs: z.number().int().min(1000).max(120_000).optional(),
   },
+  READ_ONLY_NETWORK,
   async ({ host, port, auth, perfmonHost, timeoutMs }) => {
     try {
       const result = await perfmonListCounter(host, perfmonHost, auth as DimeAuth | undefined, port, timeoutMs);
@@ -601,6 +601,7 @@ server.tool(
     object: z.string().min(1).describe("PerfMon object name"),
     timeoutMs: z.number().int().min(1000).max(120_000).optional(),
   },
+  READ_ONLY_NETWORK,
   async ({ host, port, auth, perfmonHost, object, timeoutMs }) => {
     try {
       const result = await perfmonListInstance(host, perfmonHost, object, auth as DimeAuth | undefined, port, timeoutMs);
@@ -627,6 +628,7 @@ server.tool(
     serviceNames: z.array(z.string()).optional().describe("Filter to specific service names (empty = all services)"),
     timeoutMs: z.number().int().min(1000).max(120_000).optional(),
   },
+  READ_ONLY_NETWORK,
   async ({ host, port, auth, serviceNames, timeoutMs }) => {
     try {
       const result = await getServiceStatus(host, serviceNames, auth as DimeAuth | undefined, port, timeoutMs);
@@ -650,6 +652,7 @@ server.tool(
     filePath: z.string().min(1).describe("Absolute path on CUCM"),
     outFile: z.string().optional().describe("Optional output path. Default: /tmp/cucm-mcp/<basename>"),
   },
+  READ_ONLY_NETWORK,
   async ({ host, port, auth, filePath, outFile }) => {
     const dl = await getOneFile(host, filePath, auth as DimeAuth | undefined, port);
     const saved = writeDownloadedFile(dl, outFile);
@@ -696,6 +699,7 @@ server.tool(
       .optional()
       .describe("Timeout for starting capture (SSH connect + command start)"),
   },
+  WRITE_SAFE,
   async ({ host, sshPort, auth, iface, fileBase, count, maxPackets, size, hostFilterIp, portFilter, maxDurationMs, startTimeoutMs }) => {
     const resolvedCount = count ?? (maxPackets ? 1_000_000 : undefined);
     const result = await captures.start({
@@ -726,6 +730,7 @@ server.tool(
   "packet_capture_list",
   "List active packet captures started by this MCP server.",
   {},
+  READ_ONLY_LOCAL,
   async () => ({ content: [{ type: "text", text: JSON.stringify(captures.list(), null, 2) }] })
 );
 
@@ -733,6 +738,7 @@ server.tool(
   "packet_capture_state_list",
   "List packet captures from the local state file (survives MCP restarts).",
   {},
+  READ_ONLY_LOCAL,
   async () => {
     const pruned = captureState.pruneExpired(captureState.load());
     captureState.save(pruned);
@@ -747,6 +753,7 @@ server.tool(
   {
     captureId: z.string().min(1),
   },
+  READ_ONLY_LOCAL,
   async ({ captureId }) => {
     const pruned = captureState.pruneExpired(captureState.load());
     const rec = pruned.captures[captureId];
@@ -770,6 +777,7 @@ server.tool(
   {
     captureId: z.string().min(1),
   },
+  WRITE_DESTRUCTIVE,
   async ({ captureId }) => {
     captureState.remove(captureId);
     return { content: [{ type: "text", text: JSON.stringify({ removed: true, captureId }, null, 2) }] };
@@ -783,6 +791,7 @@ server.tool(
     captureId: z.string().min(1),
     timeoutMs: z.number().int().min(1000).max(10 * 60_000).optional().describe("How long to wait for stop (default ~90s)"),
   },
+  WRITE_SAFE,
   async ({ captureId, timeoutMs }) => {
     try {
       const result = await captures.stop(captureId, timeoutMs);
@@ -836,6 +845,7 @@ server.tool(
       .optional()
       .describe("How often to retry DIME GetOneFile when the file isn't there yet"),
   },
+  WRITE_SAFE,
   async ({ captureId, dimePort, auth, outFile, stopTimeoutMs, downloadTimeoutMs, downloadPollIntervalMs }) => {
     const stopTimeout = stopTimeoutMs ?? 300_000;
     const dlTimeout = downloadTimeoutMs ?? 300_000;
@@ -918,6 +928,7 @@ server.tool(
       .optional()
       .describe("How often to retry DIME GetOneFile when the file isn't there yet"),
   },
+  WRITE_SAFE,
   async ({ captureId, dimePort, auth, outFile, downloadTimeoutMs, downloadPollIntervalMs }) => {
     const pruned = captureState.pruneExpired(captureState.load());
     const rec = pruned.captures[captureId];
@@ -981,6 +992,7 @@ server.tool(
   {
     filePath: z.string().min(1).describe("Path to .cap/.pcap file, or a captureId from packet_capture_start"),
   },
+  READ_ONLY_LOCAL,
   async ({ filePath }) => {
     try {
       const resolved = resolveCapturePath(filePath);
@@ -1000,6 +1012,7 @@ server.tool(
     filePath: z.string().min(1).describe("Path to .cap/.pcap file, or a captureId"),
     callId: z.string().optional().describe("Filter to a specific SIP Call-ID"),
   },
+  READ_ONLY_LOCAL,
   async ({ filePath, callId }) => {
     try {
       const resolved = resolveCapturePath(filePath);
@@ -1021,6 +1034,7 @@ server.tool(
     filePath: z.string().min(1).describe("Path to .cap/.pcap file, or a captureId"),
     deviceFilter: z.string().optional().describe("Filter to a specific device IP address"),
   },
+  READ_ONLY_LOCAL,
   async ({ filePath, deviceFilter }) => {
     try {
       const resolved = resolveCapturePath(filePath);
@@ -1042,6 +1056,7 @@ server.tool(
     filePath: z.string().min(1).describe("Path to .cap/.pcap file, or a captureId"),
     ssrcFilter: z.string().optional().describe("Filter to a specific RTP SSRC (hex, e.g. 0xABCD1234)"),
   },
+  READ_ONLY_LOCAL,
   async ({ filePath, ssrcFilter }) => {
     try {
       const resolved = resolveCapturePath(filePath);
@@ -1068,11 +1083,297 @@ server.tool(
       .describe("Specific tshark fields to extract (e.g. ['sip.Call-ID', 'sip.from.addr']). If omitted, returns frame basics."),
     maxPackets: z.number().int().min(1).max(1000).optional().describe("Max packets to return (default 100, max 1000)"),
   },
+  READ_ONLY_LOCAL,
   async ({ filePath, displayFilter, fields, maxPackets }) => {
     try {
       const resolved = resolveCapturePath(filePath);
       const result = await pcapProtocolFilter(resolved, displayFilter, fields, maxPackets);
       return { content: [{ type: "text", text: `${result.length} packet(s) matched filter "${displayFilter}"\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// CDR on Demand
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "cdr_get_file_list",
+  "List CDR/CMR files by UTC time range (max 1 hour). " +
+    "Time format: 12-digit UTC YYYYMMDDHHMM (e.g. 202602280100).",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    fromTime: z.string().min(12).max(12).describe("Start time in 12-digit UTC YYYYMMDDHHMM"),
+    toTime: z.string().min(12).max(12).describe("End time in 12-digit UTC YYYYMMDDHHMM"),
+    timeoutMs: z.number().int().min(1000).max(120_000).optional(),
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, port, auth, fromTime, toTime, timeoutMs }) => {
+    try {
+      const result = await cdrGetFileList(host, fromTime, toTime, auth as DimeAuth | undefined, port, timeoutMs);
+      return { content: [{ type: "text", text: `Found ${result.length} CDR/CMR file(s)\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "cdr_get_file_list_minutes",
+  "List CDR/CMR files from the last N minutes (max 60). Convenience wrapper around cdr_get_file_list.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    minutesBack: z.number().int().min(1).max(60).describe("Minutes back from now (max 60)"),
+    timeoutMs: z.number().int().min(1000).max(120_000).optional(),
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, port, auth, minutesBack, timeoutMs }) => {
+    try {
+      const result = await cdrGetFileListMinutes(host, minutesBack, auth as DimeAuth | undefined, port, timeoutMs);
+      return { content: [{ type: "text", text: `Found ${result.length} CDR/CMR file(s) from last ${minutesBack} min\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// PerfMon Sessions
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "perfmon_open_session",
+  "Open a PerfMon monitoring session. Returns a session handle UUID for use with perfmon_add_counter/perfmon_collect_session_data/perfmon_close_session. Sessions auto-expire after 25h.",
+  {
+    host: z.string().describe("CUCM API host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    timeoutMs: z.number().int().min(1000).max(120_000).optional(),
+  },
+  WRITE_SAFE,
+  async ({ host, port, auth, timeoutMs }) => {
+    try {
+      const handle = await perfmonOpenSession(host, auth as DimeAuth | undefined, port, timeoutMs);
+      return { content: [{ type: "text", text: `Session opened: ${handle}\n\n${JSON.stringify({ sessionHandle: handle }, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "perfmon_add_counter",
+  "Add counters to a PerfMon session. Counter paths use the format: \\\\host\\Object\\Counter (e.g. \\\\192.168.1.1\\Cisco CallManager\\CallsActive).",
+  {
+    host: z.string().describe("CUCM API host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    sessionHandle: z.string().min(1).describe("Session handle from perfmon_open_session"),
+    counters: z.array(z.string().min(1)).min(1).describe("Counter paths to add"),
+    timeoutMs: z.number().int().min(1000).max(120_000).optional(),
+  },
+  WRITE_SAFE,
+  async ({ host, port, auth, sessionHandle, counters, timeoutMs }) => {
+    try {
+      await perfmonAddCounter(host, sessionHandle, counters, auth as DimeAuth | undefined, port, timeoutMs);
+      return { content: [{ type: "text", text: `Added ${counters.length} counter(s) to session ${sessionHandle}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "perfmon_collect_session_data",
+  "Poll counter values from a PerfMon session. Call after perfmon_add_counter to read the latest values.",
+  {
+    host: z.string().describe("CUCM API host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    sessionHandle: z.string().min(1).describe("Session handle from perfmon_open_session"),
+    timeoutMs: z.number().int().min(1000).max(120_000).optional(),
+  },
+  WRITE_SAFE,
+  async ({ host, port, auth, sessionHandle, timeoutMs }) => {
+    try {
+      const result = await perfmonCollectSessionData(host, sessionHandle, auth as DimeAuth | undefined, port, timeoutMs);
+      return { content: [{ type: "text", text: `Collected ${result.length} counter(s)\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "perfmon_close_session",
+  "Close a PerfMon monitoring session. Best practice: close sessions when done to free server resources.",
+  {
+    host: z.string().describe("CUCM API host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    sessionHandle: z.string().min(1).describe("Session handle from perfmon_open_session"),
+    timeoutMs: z.number().int().min(1000).max(120_000).optional(),
+  },
+  WRITE_SAFE,
+  async ({ host, port, auth, sessionHandle, timeoutMs }) => {
+    try {
+      await perfmonCloseSession(host, sessionHandle, auth as DimeAuth | undefined, port, timeoutMs);
+      return { content: [{ type: "text", text: `Session ${sessionHandle} closed` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Cluster Health Check
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "cluster_health_check",
+  "One-shot cluster health check: device registration + performance counters + service status, all in parallel. " +
+    "Partial failures are captured in errors[] — you still get results from the queries that succeeded.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    timeoutMs: z.number().int().min(1000).max(120_000).optional(),
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, port, auth, timeoutMs }) => {
+    try {
+      const result = await clusterHealthCheck(host, { auth: auth as DimeAuth | undefined, port, timeoutMs });
+      const parts: string[] = [];
+      if (result.devices) parts.push(`Devices: ${result.devices.totalFound} (${result.devices.registered} registered)`);
+      if (result.counters) parts.push(`Active calls: ${result.counters.callsActive}`);
+      if (result.services) parts.push(`Services: ${result.services.started}/${result.services.total} started`);
+      if (result.errors.length) parts.push(`Errors: ${result.errors.length}`);
+      const summary = parts.join(" | ");
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Certificate Status (SSH CLI)
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "cert_list",
+  "List TLS certificates on a CUCM node via SSH CLI (show cert list). " +
+    'Returns certificate name, unit, issuer, and expiration. Type: "own", "trust", or "both".',
+  {
+    host: z.string().describe("CUCM host/IP"),
+    sshPort: z.number().int().min(1).max(65535).optional(),
+    auth: sshAuthSchema,
+    type: z.enum(["own", "trust", "both"]).optional().describe('Certificate type (default "both")'),
+    timeoutMs: z.number().int().min(1000).max(120_000).optional(),
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, sshPort, auth, type, timeoutMs }) => {
+    try {
+      const result = await listCertificates(host, type ?? "both", { auth: auth as SshAuth | undefined, sshPort, timeoutMs });
+      return { content: [{ type: "text", text: `Found ${result.length} certificate(s)\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// DRF Backup Status (SSH CLI)
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "drf_backup_status",
+  "Get current backup job status on a CUCM node via SSH CLI (utils disaster_recovery status backup).",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    sshPort: z.number().int().min(1).max(65535).optional(),
+    auth: sshAuthSchema,
+    timeoutMs: z.number().int().min(1000).max(120_000).optional(),
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, sshPort, auth, timeoutMs }) => {
+    try {
+      const result = await getBackupStatus(host, { auth: auth as SshAuth | undefined, sshPort, timeoutMs });
+      return { content: [{ type: "text", text: `Backup status: ${result.status}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "drf_backup_history",
+  "Get backup history on a CUCM node via SSH CLI (utils disaster_recovery history backup).",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    sshPort: z.number().int().min(1).max(65535).optional(),
+    auth: sshAuthSchema,
+    timeoutMs: z.number().int().min(1000).max(120_000).optional(),
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, sshPort, auth, timeoutMs }) => {
+    try {
+      const result = await getBackupHistory(host, { auth: auth as SshAuth | undefined, sshPort, timeoutMs });
+      return { content: [{ type: "text", text: `Found ${result.length} backup history entries\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// SDL Trace Parser (Local Analysis)
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "sdl_trace_parse",
+  "Parse a CUCM SDL trace file into structured signals and call flows. " +
+    "Groups signals by call-id (CI= pattern), provides signal frequency summary. Pure local analysis.",
+  {
+    filePath: z.string().min(1).describe("Path to SDL trace file on disk"),
+  },
+  READ_ONLY_LOCAL,
+  async ({ filePath }) => {
+    try {
+      const content = readFileSync(filePath, "utf8");
+      const result = parseSdlTrace(content);
+      const summary = `Parsed ${result.parsedSignals} signal(s) from ${result.totalLines} line(s), ${result.callFlows.length} call flow(s), ${result.unparsedLines} unparsed`;
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "sdl_trace_call_flow",
+  "Extract the call flow for a specific call-id from an SDL trace. " +
+    "Use sdl_trace_parse first to discover call-ids, then drill into a specific call.",
+  {
+    filePath: z.string().min(1).describe("Path to SDL trace file on disk"),
+    callId: z.string().min(1).describe("Call ID to extract (from CI= field in SDL signals)"),
+  },
+  READ_ONLY_LOCAL,
+  async ({ filePath, callId }) => {
+    try {
+      const content = readFileSync(filePath, "utf8");
+      const analysis = parseSdlTrace(content);
+      const flow = extractCallFlow(analysis, callId);
+      if (!flow) {
+        return { content: [{ type: "text", text: JSON.stringify({ error: true, message: `Call-id ${callId} not found in trace` }, null, 2) }] };
+      }
+      return { content: [{ type: "text", text: `Call ${callId}: ${flow.signals.length} signal(s)\n\n${JSON.stringify(flow, null, 2)}` }] };
     } catch (e) {
       return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
     }

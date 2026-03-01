@@ -155,3 +155,164 @@ export async function perfmonListInstance(
 
   return items.map((item) => String(item.Name ?? item));
 }
+
+/* ------------------------------------------------------------------ */
+/*  PerfMon Session-based functions                                    */
+/* ------------------------------------------------------------------ */
+
+function buildOpenSessionEnvelope(): string {
+  return (
+    '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soap="http://schemas.cisco.com/ast/soap">' +
+    "<soapenv:Header/>" +
+    "<soapenv:Body>" +
+    "<soap:perfmonOpenSession/>" +
+    "</soapenv:Body>" +
+    "</soapenv:Envelope>"
+  );
+}
+
+function buildAddCounterEnvelope(sessionHandle: string, counters: string[]): string {
+  const counterItems = counters
+    .map((c) => `<soap:Counter><soap:Name>${escapeXml(c)}</soap:Name></soap:Counter>`)
+    .join("");
+  return (
+    '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soap="http://schemas.cisco.com/ast/soap">' +
+    "<soapenv:Header/>" +
+    "<soapenv:Body>" +
+    "<soap:perfmonAddCounter>" +
+    `<soap:SessionHandle>${escapeXml(sessionHandle)}</soap:SessionHandle>` +
+    `<soap:ArrayOfCounter>${counterItems}</soap:ArrayOfCounter>` +
+    "</soap:perfmonAddCounter>" +
+    "</soapenv:Body>" +
+    "</soapenv:Envelope>"
+  );
+}
+
+function buildCollectSessionDataEnvelope(sessionHandle: string): string {
+  return (
+    '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soap="http://schemas.cisco.com/ast/soap">' +
+    "<soapenv:Header/>" +
+    "<soapenv:Body>" +
+    "<soap:perfmonCollectSessionData>" +
+    `<soap:SessionHandle>${escapeXml(sessionHandle)}</soap:SessionHandle>` +
+    "</soap:perfmonCollectSessionData>" +
+    "</soapenv:Body>" +
+    "</soapenv:Envelope>"
+  );
+}
+
+function buildCloseSessionEnvelope(sessionHandle: string): string {
+  return (
+    '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soap="http://schemas.cisco.com/ast/soap">' +
+    "<soapenv:Header/>" +
+    "<soapenv:Body>" +
+    "<soap:perfmonCloseSession>" +
+    `<soap:SessionHandle>${escapeXml(sessionHandle)}</soap:SessionHandle>` +
+    "</soap:perfmonCloseSession>" +
+    "</soapenv:Body>" +
+    "</soapenv:Envelope>"
+  );
+}
+
+export async function perfmonOpenSession(
+  hostOrUrl: string,
+  auth?: DimeAuth,
+  port?: number,
+  timeoutMs?: number,
+): Promise<string> {
+  const target = resolveTarget(hostOrUrl, port);
+  const resolvedAuth = resolveAuth(auth);
+  const envelope = buildOpenSessionEnvelope();
+
+  const body = await fetchServiceabilitySoap(
+    target.host,
+    target.port!,
+    resolvedAuth,
+    PERFMON_PATH,
+    "perfmonOpenSession",
+    envelope,
+    timeoutMs ?? 30_000,
+  );
+
+  const resp = body.perfmonOpenSessionResponse as Record<string, unknown> | undefined;
+  const handle = resp?.perfmonOpenSessionReturn ?? resp?.SessionHandle;
+  if (!handle) throw new Error("perfmonOpenSession returned no session handle");
+  return String(handle);
+}
+
+export async function perfmonAddCounter(
+  hostOrUrl: string,
+  sessionHandle: string,
+  counters: string[],
+  auth?: DimeAuth,
+  port?: number,
+  timeoutMs?: number,
+): Promise<void> {
+  const target = resolveTarget(hostOrUrl, port);
+  const resolvedAuth = resolveAuth(auth);
+  const envelope = buildAddCounterEnvelope(sessionHandle, counters);
+
+  await fetchServiceabilitySoap(
+    target.host,
+    target.port!,
+    resolvedAuth,
+    PERFMON_PATH,
+    "perfmonAddCounter",
+    envelope,
+    timeoutMs ?? 30_000,
+  );
+}
+
+export async function perfmonCollectSessionData(
+  hostOrUrl: string,
+  sessionHandle: string,
+  auth?: DimeAuth,
+  port?: number,
+  timeoutMs?: number,
+): Promise<PerfmonCounterValue[]> {
+  const target = resolveTarget(hostOrUrl, port);
+  const resolvedAuth = resolveAuth(auth);
+  const envelope = buildCollectSessionDataEnvelope(sessionHandle);
+
+  const body = await fetchServiceabilitySoap(
+    target.host,
+    target.port!,
+    resolvedAuth,
+    PERFMON_PATH,
+    "perfmonCollectSessionData",
+    envelope,
+    timeoutMs ?? 30_000,
+  );
+
+  const resp = body.perfmonCollectSessionDataResponse as Record<string, unknown> | undefined;
+  const aoci = resp?.ArrayOfCounterInfo as Record<string, unknown> | undefined;
+  const items = toArray(aoci?.item ?? resp?.perfmonCollectSessionDataReturn) as Record<string, unknown>[];
+
+  return items.map((item) => ({
+    name: String(item.Name ?? ""),
+    value: Number(item.Value ?? 0),
+    cStatus: Number(item.CStatus ?? 0),
+  }));
+}
+
+export async function perfmonCloseSession(
+  hostOrUrl: string,
+  sessionHandle: string,
+  auth?: DimeAuth,
+  port?: number,
+  timeoutMs?: number,
+): Promise<void> {
+  const target = resolveTarget(hostOrUrl, port);
+  const resolvedAuth = resolveAuth(auth);
+  const envelope = buildCloseSessionEnvelope(sessionHandle);
+
+  await fetchServiceabilitySoap(
+    target.host,
+    target.port!,
+    resolvedAuth,
+    PERFMON_PATH,
+    "perfmonCloseSession",
+    envelope,
+    timeoutMs ?? 30_000,
+  );
+}

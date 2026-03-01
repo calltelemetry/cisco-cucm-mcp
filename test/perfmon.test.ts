@@ -1,5 +1,13 @@
 import { withMockFetch, responseBytes } from './helpers.js';
-import { perfmonCollectCounterData, perfmonListCounter, perfmonListInstance } from '../src/perfmon.js';
+import {
+  perfmonCollectCounterData,
+  perfmonListCounter,
+  perfmonListInstance,
+  perfmonOpenSession,
+  perfmonAddCounter,
+  perfmonCollectSessionData,
+  perfmonCloseSession,
+} from '../src/perfmon.js';
 
 describe('perfmon', () => {
   const savedEnv = { user: '', pass: '' };
@@ -126,6 +134,117 @@ describe('perfmon', () => {
         headers: { 'content-type': 'text/xml' },
       })
     );
+  });
+
+  it('perfmonOpenSession returns a session handle', async () => {
+    const xml = `<?xml version="1.0"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+  <soapenv:Body>
+    <ns:perfmonOpenSessionResponse xmlns:ns="http://schemas.cisco.com/ast/soap">
+      <perfmonOpenSessionReturn>a1b2c3d4-e5f6-7890-abcd-ef1234567890</perfmonOpenSessionReturn>
+    </ns:perfmonOpenSessionResponse>
+  </soapenv:Body>
+</soapenv:Envelope>`;
+
+    const h = withMockFetch(async () => {
+      const handle = await perfmonOpenSession('10.0.0.1');
+      expect(handle).toBe('a1b2c3d4-e5f6-7890-abcd-ef1234567890');
+    });
+
+    await h.run(async (url) => {
+      expect(url).toContain('/perfmonservice2/');
+      return responseBytes(Buffer.from(xml, 'utf8'), {
+        headers: { 'content-type': 'text/xml' },
+      });
+    });
+  });
+
+  it('perfmonAddCounter sends correct XML with counter names', async () => {
+    const xml = `<?xml version="1.0"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+  <soapenv:Body>
+    <ns:perfmonAddCounterResponse xmlns:ns="http://schemas.cisco.com/ast/soap"/>
+  </soapenv:Body>
+</soapenv:Envelope>`;
+
+    const h = withMockFetch(async () => {
+      await perfmonAddCounter('10.0.0.1', 'session-uuid-123', [
+        '\\\\10.0.0.1\\Cisco CallManager\\CallsActive',
+        '\\\\10.0.0.1\\Cisco CallManager\\CallsCompleted',
+      ]);
+    });
+
+    await h.run(async (_url, init) => {
+      const body = typeof init.body === 'string' ? init.body : Buffer.from(init.body as Uint8Array).toString('utf8');
+      expect(body).toContain('perfmonAddCounter');
+      expect(body).toContain('<soap:SessionHandle>session-uuid-123</soap:SessionHandle>');
+      expect(body).toContain('<soap:ArrayOfCounter>');
+      expect(body).toContain('<soap:Counter><soap:Name>');
+      expect(body).toContain('CallsActive');
+      expect(body).toContain('CallsCompleted');
+      return responseBytes(Buffer.from(xml, 'utf8'), {
+        headers: { 'content-type': 'text/xml' },
+      });
+    });
+  });
+
+  it('perfmonCollectSessionData parses counter values', async () => {
+    const xml = `<?xml version="1.0"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+  <soapenv:Body>
+    <ns:perfmonCollectSessionDataResponse xmlns:ns="http://schemas.cisco.com/ast/soap">
+      <ArrayOfCounterInfo>
+        <item>
+          <Name>\\\\10.0.0.1\\Cisco CallManager\\CallsActive</Name>
+          <Value>7</Value>
+          <CStatus>0</CStatus>
+        </item>
+        <item>
+          <Name>\\\\10.0.0.1\\Cisco CallManager\\CallsCompleted</Name>
+          <Value>1234</Value>
+          <CStatus>0</CStatus>
+        </item>
+      </ArrayOfCounterInfo>
+    </ns:perfmonCollectSessionDataResponse>
+  </soapenv:Body>
+</soapenv:Envelope>`;
+
+    const h = withMockFetch(async () => {
+      const r = await perfmonCollectSessionData('10.0.0.1', 'session-uuid-123');
+      expect(r).toHaveLength(2);
+      expect(r[0]!.name).toContain('CallsActive');
+      expect(r[0]!.value).toBe(7);
+      expect(r[0]!.cStatus).toBe(0);
+      expect(r[1]!.name).toContain('CallsCompleted');
+      expect(r[1]!.value).toBe(1234);
+    });
+
+    await h.run(async (url) => {
+      expect(url).toContain('/perfmonservice2/');
+      return responseBytes(Buffer.from(xml, 'utf8'), {
+        headers: { 'content-type': 'text/xml' },
+      });
+    });
+  });
+
+  it('perfmonCloseSession succeeds', async () => {
+    const xml = `<?xml version="1.0"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+  <soapenv:Body>
+    <ns:perfmonCloseSessionResponse xmlns:ns="http://schemas.cisco.com/ast/soap"/>
+  </soapenv:Body>
+</soapenv:Envelope>`;
+
+    const h = withMockFetch(async () => {
+      await perfmonCloseSession('10.0.0.1', 'session-uuid-123');
+    });
+
+    await h.run(async (url) => {
+      expect(url).toContain('/perfmonservice2/');
+      return responseBytes(Buffer.from(xml, 'utf8'), {
+        headers: { 'content-type': 'text/xml' },
+      });
+    });
   });
 
   it('SOAP fault throws', async () => {

@@ -1,22 +1,9 @@
 import { XMLParser } from "fast-xml-parser";
 import { extractBoundary, parseMultipartRelated } from "./multipart.js";
 import { formatCucmDateTime, guessTimezoneString } from "./time.js";
+import { basicAuthHeader, escapeXml } from "./soap.js";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-
-// Default to accepting self-signed/invalid certs (common on CUCM lab/dev).
-// Opt back into strict verification with CUCM_MCP_TLS_MODE=strict.
-const tlsMode = (process.env.CUCM_MCP_TLS_MODE || process.env.MCP_TLS_MODE || "").toLowerCase();
-const strictTls = tlsMode === "strict" || tlsMode === "verify";
-if (!strictTls) {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-  // Silence Node's one-time TLS warning — we set this intentionally for CUCM self-signed certs
-  const _ew = process.emitWarning.bind(process);
-  process.emitWarning = ((w: string | Error, ...a: unknown[]) => {
-    if (String(typeof w === "string" ? w : w?.message ?? "").includes("NODE_TLS_REJECT_UNAUTHORIZED")) return;
-    _ew(w, ...(a as [string]));
-  }) as typeof process.emitWarning;
-}
 
 export type DimeAuth = { username?: string; password?: string };
 
@@ -104,19 +91,6 @@ export function resolveTarget(hostOrUrl: string, port?: number): DimeTarget {
   const envPort = process.env.CUCM_DIME_PORT ? Number.parseInt(process.env.CUCM_DIME_PORT, 10) : undefined;
   const resolvedPort = port ?? envPort ?? 8443;
   return { host, port: resolvedPort };
-}
-
-function basicAuthHeader(username: string, password: string): string {
-  return `Basic ${Buffer.from(`${username}:${password}`, "utf8").toString("base64")}`;
-}
-
-function escapeXml(s: string): string {
-  return s
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
 }
 
 function soapEnvelopeList(): string {

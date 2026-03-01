@@ -10,9 +10,7 @@ export default defineConfig({
     },
     rollupOptions: {
       external: [
-        '@modelcontextprotocol/sdk/server/index.js',
-        '@modelcontextprotocol/sdk/server/stdio.js',
-        '@modelcontextprotocol/sdk/types.js',
+        /^@modelcontextprotocol\//,
         'fast-xml-parser',
         'ssh2',
         'zod',

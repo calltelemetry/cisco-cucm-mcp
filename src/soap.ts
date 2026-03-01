@@ -1,19 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
 
-// Default to accepting self-signed/invalid certs (common on CUCM lab/dev).
-// Opt back into strict verification with CUCM_MCP_TLS_MODE=strict.
-const tlsMode = (process.env.CUCM_MCP_TLS_MODE || process.env.MCP_TLS_MODE || "").toLowerCase();
-const strictTls = tlsMode === "strict" || tlsMode === "verify";
-if (!strictTls) {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-  // Silence Node's one-time TLS warning — we set this intentionally for CUCM self-signed certs
-  const _ew = process.emitWarning.bind(process);
-  process.emitWarning = ((w: string | Error, ...a: unknown[]) => {
-    if (String(typeof w === "string" ? w : w?.message ?? "").includes("NODE_TLS_REJECT_UNAUTHORIZED")) return;
-    _ew(w, ...(a as [string]));
-  }) as typeof process.emitWarning;
-}
-
 export const soapParser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@",

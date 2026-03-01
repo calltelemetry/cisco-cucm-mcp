@@ -1,0 +1,95 @@
+import { sshExecCommand, type SshAuth } from "./ssh.js";
+
+export type CertificateInfo = {
+  unit: string;
+  type: "own" | "trust";
+  name: string;
+  issuer: string;
+  expires: string;
+};
+
+/**
+ * Parse the CLI table output from `show cert list own` or `show cert list trust`
+ * into structured CertificateInfo objects.
+ *
+ * CUCM output format (blocks separated by blank lines):
+ * ```
+ * Unit: tomcat
+ * Type: own
+ * Name: tomcat
+ * Issuer: CN=cucm-pub.lab.local
+ * Expires: Thu Jan 30 00:53:07 UTC 2030
+ * ```
+ */
+export function parseCertListOutput(
+  output: string,
+  type: "own" | "trust",
+): CertificateInfo[] {
+  if (!output || !output.trim()) return [];
+
+  const certs: CertificateInfo[] = [];
+
+  // Split into blocks separated by one or more blank lines
+  const blocks = output.split(/\n\s*\n/).filter((b) => b.trim());
+
+  for (const block of blocks) {
+    const fields: Record<string, string> = {};
+    for (const line of block.split("\n")) {
+      const match = line.match(/^\s*(Unit|Type|Name|Issuer|Expires)\s*:\s*(.+)$/i);
+      if (match) {
+        fields[match[1]!.toLowerCase()] = match[2]!.trim();
+      }
+    }
+
+    // A valid certificate block must have at least unit and name
+    if (fields.unit && fields.name) {
+      certs.push({
+        unit: fields.unit,
+        type,
+        name: fields.name,
+        issuer: fields.issuer ?? "",
+        expires: fields.expires ?? "",
+      });
+    }
+  }
+
+  return certs;
+}
+
+/**
+ * List certificates on a CUCM node via SSH CLI.
+ *
+ * @param host - CUCM hostname or IP
+ * @param type - "own" for identity certs, "trust" for CA/trust certs, "both" for all
+ * @param opts - SSH auth, port, and timeout options
+ * @returns Array of parsed certificate info objects
+ */
+export async function listCertificates(
+  host: string,
+  type: "own" | "trust" | "both",
+  opts?: {
+    auth?: SshAuth;
+    sshPort?: number;
+    timeoutMs?: number;
+  },
+): Promise<CertificateInfo[]> {
+  const sshOpts = {
+    auth: opts?.auth,
+    sshPort: opts?.sshPort,
+    timeoutMs: opts?.timeoutMs,
+  };
+
+  const certs: CertificateInfo[] = [];
+
+  if (type === "own" || type === "both") {
+    const result = await sshExecCommand(host, "show cert list own", sshOpts);
+    certs.push(...parseCertListOutput(result.stdout, "own"));
+  }
+
+  if (type === "trust" || type === "both") {
+    const result = await sshExecCommand(host, "show cert list trust", sshOpts);
+    certs.push(...parseCertListOutput(result.stdout, "trust"));
+  }
+
+  return certs;
+}

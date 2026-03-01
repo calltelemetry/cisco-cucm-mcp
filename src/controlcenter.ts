@@ -62,8 +62,8 @@ export async function getServiceStatus(
     serviceStatus: String(svc.ServiceStatus ?? ""),
     reasonCode: Number(svc.ReasonCode ?? 0),
     reasonCodeString: String(svc.ReasonCodeString ?? ""),
-    startTime: String(svc.StartTime ?? ""),
+    startTime: typeof svc.StartTime === "string" ? svc.StartTime : "",
     upTime: Number(svc.UpTime ?? 0),
-    upTimeString: String(svc.UpTimeString ?? ""),
+    upTimeString: typeof svc.UpTimeString === "string" ? svc.UpTimeString : "",
   }));
 }

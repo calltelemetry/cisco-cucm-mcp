@@ -2,8 +2,8 @@ import crypto from "node:crypto";
 import { Client, type ClientChannel } from "ssh2";
 
 import { defaultStateStore, type CaptureStateStore } from "./state.js";
-
-export type SshAuth = { username?: string; password?: string };
+import { looksLikeCucmPrompt, resolveSshAuth, type SshAuth } from "./ssh.js";
+export type { SshAuth } from "./ssh.js";
 
 export type PacketCaptureStart = {
   host: string;
@@ -44,25 +44,6 @@ function extractCapFilePath(text?: string): string | undefined {
   const matches = text.match(re);
   if (!matches || matches.length === 0) return undefined;
   return matches[matches.length - 1];
-}
-
-function looksLikeCucmPrompt(text?: string): boolean {
-  const t = String(text || "");
-  // CUCM CLI commonly ends commands by printing a prompt like:
-  //   admin:
-  // Some environments might show other usernames.
-  // We only look at the tail to avoid false positives.
-  const tail = t.slice(-80);
-  return /(?:^|\n)[A-Za-z0-9_-]+:\s*$/.test(tail);
-}
-
-export function resolveSshAuth(auth?: SshAuth): Required<SshAuth> {
-  const username = auth?.username || process.env.CUCM_SSH_USERNAME;
-  const password = auth?.password || process.env.CUCM_SSH_PASSWORD;
-  if (!username || !password) {
-    throw new Error("Missing SSH credentials (provide auth or set CUCM_SSH_USERNAME/CUCM_SSH_PASSWORD)");
-  }
-  return { username, password };
 }
 
 export function sanitizeFileBase(s: string): string {

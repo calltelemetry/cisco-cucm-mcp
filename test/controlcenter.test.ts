@@ -65,8 +65,12 @@ describe('controlcenter', () => {
       expect(r[0]!.reasonCodeString).toBe('Service is running');
       expect(r[1]!.serviceName).toBe('Cisco CDR Agent');
       expect(r[1]!.serviceStatus).toBe('Stopped');
+      // Regression: empty XML tags must produce "" not "[object Object]"
+      expect(r[1]!.startTime).toBe('');
+      expect(r[1]!.upTimeString).toBe('');
       expect(r[2]!.serviceName).toBe('Cisco DHCP Monitor');
       expect(r[2]!.serviceStatus).toBe('Not Activated');
+      expect(r[2]!.startTime).toBe('');
     });
 
     await h.run(async (url) => {
