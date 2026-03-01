@@ -20,6 +20,9 @@ import { PacketCaptureManager, type SshAuth } from "./packetCapture.js";
 import { defaultStateStore } from "./state.js";
 import { applyPhone, updatePhonePacketCapture, axlExecute, type AxlAuth } from "./axl.js";
 import { pcapCallSummary, pcapSipCalls, pcapScppMessages, pcapRtpStreams, pcapProtocolFilter } from "./pcap-analyze.js";
+import { selectCmDevice, selectCmDeviceByIp, type SelectCmDeviceArgs } from "./risport.js";
+import { perfmonCollectCounterData, perfmonListCounter, perfmonListInstance } from "./perfmon.js";
+import { getServiceStatus } from "./controlcenter.js";
 
 // Default to accepting self-signed/invalid certs (common on CUCM lab/dev).
 // Opt back into strict verification with CUCM_MCP_TLS_MODE=strict.
@@ -29,7 +32,7 @@ const strictTls = tlsMode === "strict" || tlsMode === "verify";
 // Set CUCM_MCP_TLS_MODE=strict to enforce verification.
 if (!strictTls) process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
-const server = new McpServer({ name: "cucm", version: "0.1.8" });
+const server = new McpServer({ name: "cucm", version: "0.4.0" });
 const captures = new PacketCaptureManager();
 const captureState = defaultStateStore();
 
@@ -467,6 +470,172 @@ server.tool(
           },
         ],
       };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// RisPort70 (Real-time Device Registration)
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "select_cm_device",
+  "Query real-time device registration status via RisPort70 (selectCmDevice). " +
+    "Returns registered/unregistered phones, gateways, trunks with IP, directory number, protocol, firmware.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    maxReturnedDevices: z.number().int().min(1).max(2000).optional().describe("Max devices (default 200)"),
+    deviceClass: z.enum(["Phone", "Gateway", "H323", "CTI", "VoiceMail", "MediaResources", "HuntList", "SIPTrunk", "Unknown"])
+      .optional().describe("Device class filter (default Phone)"),
+    model: z.number().int().optional().describe("Model number (255 = any, default 255)"),
+    status: z.enum(["Any", "Registered", "UnRegistered", "Rejected", "PartiallyRegistered", "Unknown"])
+      .optional().describe("Registration status filter (default Any)"),
+    selectBy: z.enum(["Name", "IPV4Address", "IPV6Address", "DirNumber", "Description", "SIPStatus"])
+      .optional().describe("Search field (default Name)"),
+    selectItems: z.array(z.string()).optional().describe('Search values (* = wildcard, e.g. ["SEP*"] or ["192.168.1.*"])'),
+    protocol: z.enum(["Any", "SIP", "SCCP", "Unknown"]).optional().describe("Protocol filter (default Any)"),
+    timeoutMs: z.number().int().min(1000).max(120_000).optional().describe("Request timeout (default 60000, RIS can be slow on large clusters)"),
+  },
+  async ({ host, port, auth, timeoutMs, ...rest }) => {
+    try {
+      const args: SelectCmDeviceArgs = { ...rest, timeoutMs };
+      const result = await selectCmDevice(host, args, auth as DimeAuth | undefined, port);
+      const summary = `Found ${result.totalDevicesFound} device(s) across ${result.cmNodes.length} node(s)`;
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "select_cm_device_by_ip",
+  "Convenience: query device registration status by IP address via RisPort70.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    ipAddress: z.string().min(1).describe("IP address to search (e.g. 192.168.1.100 or 192.168.1.*)"),
+    maxDevices: z.number().int().min(1).max(2000).optional(),
+    status: z.enum(["Any", "Registered", "UnRegistered", "Rejected", "PartiallyRegistered", "Unknown"]).optional(),
+    timeoutMs: z.number().int().min(1000).max(120_000).optional(),
+  },
+  async ({ host, port, auth, ipAddress, maxDevices, status, timeoutMs }) => {
+    try {
+      const result = await selectCmDeviceByIp(host, ipAddress, {
+        maxDevices,
+        status,
+        auth: auth as DimeAuth | undefined,
+        port,
+        timeoutMs,
+      });
+      const summary = `Found ${result.totalDevicesFound} device(s) matching IP ${ipAddress}`;
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// PerfMon (Performance Monitoring)
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "perfmon_collect_counter_data",
+  "Collect real-time performance counter values from a CUCM node. " +
+    'Common objects: "Cisco CallManager", "Cisco Tftp", "Processor", "Memory", "Cisco SIP", "Cisco SIP Station".',
+  {
+    host: z.string().describe("CUCM API host/IP (Serviceability endpoint)"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    perfmonHost: z.string().describe("Target CUCM node hostname/IP to collect counters from"),
+    object: z.string().min(1).describe('PerfMon object name, e.g. "Cisco CallManager"'),
+    timeoutMs: z.number().int().min(1000).max(120_000).optional(),
+  },
+  async ({ host, port, auth, perfmonHost, object, timeoutMs }) => {
+    try {
+      const result = await perfmonCollectCounterData(host, perfmonHost, object, auth as DimeAuth | undefined, port, timeoutMs);
+      const summary = `Collected ${result.length} counter(s) for "${object}" from ${perfmonHost}`;
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "perfmon_list_counter",
+  "List all available PerfMon counter objects and their counters on a CUCM node. " +
+    "Use this to discover what counters are available before calling perfmon_collect_counter_data.",
+  {
+    host: z.string().describe("CUCM API host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    perfmonHost: z.string().describe("Target CUCM node hostname/IP"),
+    timeoutMs: z.number().int().min(1000).max(120_000).optional(),
+  },
+  async ({ host, port, auth, perfmonHost, timeoutMs }) => {
+    try {
+      const result = await perfmonListCounter(host, perfmonHost, auth as DimeAuth | undefined, port, timeoutMs);
+      const totalCounters = result.reduce((sum, obj) => sum + obj.counters.length, 0);
+      const summary = `Found ${result.length} object(s) with ${totalCounters} total counter(s) on ${perfmonHost}`;
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "perfmon_list_instance",
+  "List instances of a PerfMon object on a CUCM node. " +
+    'For example, listing instances of "Cisco Lines Active" returns each DN.',
+  {
+    host: z.string().describe("CUCM API host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    perfmonHost: z.string().describe("Target CUCM node hostname/IP"),
+    object: z.string().min(1).describe("PerfMon object name"),
+    timeoutMs: z.number().int().min(1000).max(120_000).optional(),
+  },
+  async ({ host, port, auth, perfmonHost, object, timeoutMs }) => {
+    try {
+      const result = await perfmonListInstance(host, perfmonHost, object, auth as DimeAuth | undefined, port, timeoutMs);
+      const summary = `Found ${result.length} instance(s) of "${object}" on ${perfmonHost}`;
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// ControlCenter (Service Status)
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "get_service_status",
+  "Get the status of CUCM services (Started/Stopped/Not Activated) via ControlCenter. " +
+    "Read-only; does NOT start/stop/restart services.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    serviceNames: z.array(z.string()).optional().describe("Filter to specific service names (empty = all services)"),
+    timeoutMs: z.number().int().min(1000).max(120_000).optional(),
+  },
+  async ({ host, port, auth, serviceNames, timeoutMs }) => {
+    try {
+      const result = await getServiceStatus(host, serviceNames, auth as DimeAuth | undefined, port, timeoutMs);
+      const started = result.filter((s) => s.serviceStatus === "Started").length;
+      const stopped = result.filter((s) => s.serviceStatus === "Stopped").length;
+      const summary = `${result.length} service(s): ${started} started, ${stopped} stopped`;
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
     }
   }
 );

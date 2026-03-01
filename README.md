@@ -11,6 +11,9 @@ MCP (Model Context Protocol) server for Cisco CUCM operational debugging.
 
 - **DIME Log Collection** — Query and download trace/log files via CUCM DIME SOAP services on `:8443`
 - **Syslog** — Query and download system log files via DIME
+- **RisPort70 (Real-time Device Status)** — Query phone/gateway/trunk registration status via selectCmDevice
+- **PerfMon (Performance Monitoring)** — Collect real-time counters (call counts, CPU, memory, SIP stats)
+- **ControlCenter (Service Status)** — Query CUCM service health: Started, Stopped, Not Activated (read-only)
 - **Packet Capture** — Start/stop captures via CUCM CLI over SSH, download `.cap` files via DIME
 - **Pcap Analysis** — Analyze captured pcaps locally via tshark: SIP flows, SCCP messages, RTP quality metrics
 
@@ -40,7 +43,6 @@ Add to your `.mcp.json`:
       "command": "npx",
       "args": ["-y", "@calltelemetry/cisco-dime-mcp@latest"],
       "env": {
-        "CUCM_MCP_TLS_MODE": "permissive",
         "CUCM_DIME_USERNAME": "<dime-user>",
         "CUCM_DIME_PASSWORD": "<dime-pass>",
         "CUCM_SSH_USERNAME": "<ssh-user>",
@@ -99,6 +101,10 @@ The pcap analysis tools require **tshark** (Wireshark CLI). Discovered automatic
 | `TSHARK_PATH` | Override tshark binary location |
 | `CUCM_MCP_TSHARK_TIMEOUT_MS` | Execution timeout (default: `60000`) |
 
+### Serviceability APIs (RIS, PerfMon, ControlCenter)
+
+These APIs share the same credentials and port as DIME. No additional environment variables needed.
+
 ### Capture State Persistence
 
 Packet capture metadata is persisted to a local JSON file for recovery after MCP restarts.
@@ -128,6 +134,27 @@ Packet capture metadata is persisted to a local JSON file for recovery after MCP
 | `axl_execute` | Execute any AXL SOAP operation |
 | `axl_download_wsdl` | Download the AXL WSDL schema |
 | `phone_packet_capture_enable` | Enable packet capture on a phone (updatePhone + applyPhone) |
+
+### RisPort70 (Real-time Device Status)
+
+| Tool | Description |
+|------|-------------|
+| `select_cm_device` | Query device registration status (phones, gateways, trunks) with filters |
+| `select_cm_device_by_ip` | Convenience: look up device registration by IP address |
+
+### PerfMon (Performance Monitoring)
+
+| Tool | Description |
+|------|-------------|
+| `perfmon_collect_counter_data` | Collect counter values for a PerfMon object (e.g. "Cisco CallManager") |
+| `perfmon_list_counter` | Discover available PerfMon objects and counters |
+| `perfmon_list_instance` | List instances of a PerfMon object |
+
+### ControlCenter (Service Status)
+
+| Tool | Description |
+|------|-------------|
+| `get_service_status` | Query CUCM service status — Started, Stopped, Not Activated (read-only) |
 
 ### Packet Capture (SSH + DIME)
 
@@ -240,6 +267,89 @@ Examples below are from a live CUCM 15.0 cluster.
     }
   ]
 }
+```
+
+### Query Registered Phones (RisPort70)
+
+```
+→ select_cm_device({
+    host: "192.168.125.10",
+    deviceClass: "Phone",
+    status: "Any",
+    selectItems: ["*"]
+  })
+
+{
+  "totalDevicesFound": 3,
+  "cmNodes": [
+    {
+      "name": "cucm15-cluster1",
+      "returnCode": "Ok",
+      "devices": [
+        {
+          "name": "SEP000832C78E0F",
+          "ipAddress": "192.168.125.85",
+          "dirNumber": "1001-Registered",
+          "status": "Registered",
+          "protocol": "SIP",
+          "activeLoadId": "sip78xx.14-3-1-0001-60"
+        },
+        {
+          "name": "SEP0022905C7710",
+          "ipAddress": "192.168.125.178",
+          "dirNumber": "1000-Registered",
+          "status": "Registered",
+          "protocol": "SCCP",
+          "activeLoadId": "SCCP75.9-4-2SR4-3S"
+        },
+        {
+          "name": "SEP505C885DF37F",
+          "ipAddress": "192.168.125.234",
+          "dirNumber": "1003-Registered",
+          "status": "Registered",
+          "protocol": "SIP",
+          "activeLoadId": "PHONEOS.3-2-1-0003-28"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Collect Performance Counters (PerfMon)
+
+```
+→ perfmon_collect_counter_data({
+    host: "192.168.125.10",
+    perfmonHost: "192.168.125.10",
+    object: "Cisco CallManager"
+  })
+
+[
+  { "name": "\\\\192.168.125.10\\Cisco CallManager\\CallsActive", "value": 0, "cStatus": 0 },
+  { "name": "\\\\192.168.125.10\\Cisco CallManager\\CallsAttempted", "value": 54, "cStatus": 0 },
+  { "name": "\\\\192.168.125.10\\Cisco CallManager\\CallsCompleted", "value": 44, "cStatus": 0 },
+  { "name": "\\\\192.168.125.10\\Cisco CallManager\\RegisteredHardwarePhones", "value": 3, "cStatus": 0 },
+  { "name": "\\\\192.168.125.10\\Cisco CallManager\\RegisteredOtherStationDevices", "value": 5, "cStatus": 0 }
+  // ... 134 counters total
+]
+```
+
+### Check Service Health (ControlCenter)
+
+```
+→ get_service_status({ host: "192.168.125.10" })
+
+[
+  { "serviceName": "Cisco CallManager",       "serviceStatus": "Started" },
+  { "serviceName": "Cisco CTIManager",        "serviceStatus": "Started" },
+  { "serviceName": "Cisco Tftp",              "serviceStatus": "Started" },
+  { "serviceName": "Cisco AXL Web Service",   "serviceStatus": "Started" },
+  { "serviceName": "Cisco RIS Data Collector","serviceStatus": "Started" },
+  { "serviceName": "Cisco CDR Agent",         "serviceStatus": "Started" },
+  { "serviceName": "Cisco DHCP Monitor Service", "serviceStatus": "Stopped" }
+  // ... 81 services total (65 Started)
+]
 ```
 
 ### Packet Capture Workflow (End-to-End)
