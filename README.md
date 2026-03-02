@@ -8,24 +8,57 @@
 [![Install in Claude Code](https://img.shields.io/badge/Claude_Code-Install-5A28E4?logo=claude)](https://claude.ai/mcp/install?repo=calltelemetry/cisco-cucm-mcp)
 [![Install in Cursor](https://img.shields.io/badge/Cursor-Install-2D2D2D?logo=cursor)](https://cursor.com/mcp/install?repo=calltelemetry/cisco-cucm-mcp)
 
-MCP (Model Context Protocol) server for Cisco CUCM operational debugging — 47 tools covering logs, device inventory, performance monitoring, packet capture, call analysis, certificates, backups, CTI status, cluster topology, and more.
+MCP (Model Context Protocol) server for Cisco CUCM operational debugging — 61 tools covering logs, device inventory, performance monitoring, packet capture, call analysis, service control, AXL discovery, certificates, backups, CTI status, cluster topology, and more.
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        CUCM Cluster                             │
+├──────────┬──────────┬──────────┬──────────────┬────────────────┤
+│ DIME     │ RisPort  │ PerfMon  │ ControlCenter│ ControlCenter  │
+│ :8443    │ :8443    │ :8443    │ :8443        │ Extended :8443 │
+│          │          │          │              │                │
+│ Logs     │ Device   │ Counters │ Service      │ Start/Stop/    │
+│ CDR      │ status   │ Sessions │ status       │ Restart        │
+│ Files    │ CTI      │          │              │ Service list   │
+├──────────┴──────────┼──────────┴──────────────┴────────────────┤
+│ AXL :8443           │ SSH :22                                  │
+│                     │                                          │
+│ Phone config        │ Version, cluster, status, network,       │
+│ 300+ operations     │ certs, backups, packet capture           │
+│ WSDL discovery      │                                          │
+└─────────────────────┴──────────────────────────────────────────┘
+                      ▲
+                      │  cisco-cucm-mcp — 61 MCP tools
+                      ▼
+              ┌───────────────┐
+              │  MCP Client   │
+              │ (Claude, etc) │
+              └───────────────┘
+```
 
 ## Capabilities
 
 - **DIME Log Collection** — Query and download trace/log files via CUCM DIME SOAP services on `:8443`
+- **Log Presets** — Schema-aware presets for SIP traces, CTI traces, and CURRI routing logs
+- **Batch Download** — Download multiple log files in one operation with partial failure tolerance
 - **Syslog** — Query and download system log files via DIME
 - **RisPort70 (Real-time Device Status)** — Query phone/gateway/trunk registration status via selectCmDevice, auto-paginating for large clusters (>1000 devices)
 - **CTI Status** — Query real-time CTI ports, route points, and application connections via selectCtiItem
 - **PerfMon (Performance Monitoring)** — Collect real-time counters, open monitoring sessions for continuous polling, add/remove counters
 - **ControlCenter (Service Status)** — Query CUCM service health: Started, Stopped, Not Activated (read-only)
+- **Service Control** — Start, stop, restart CUCM services via ControlCenterServicesEx; list all deployable services
 - **CDR on Demand** — List and download CDR/CMR files by time range via CDRonDemandService + DIME
 - **Cluster Health Check** — One-shot health: devices + counters + services in parallel with partial failure tolerance
-- **SSH CLI Tools** — Version info, cluster topology via CUCM CLI over SSH
+- **AXL Discovery** — Parse WSDL to list all AXL operations and describe their input/output schemas
+- **SSH CLI Tools** — Version info, cluster topology, system status, network details via CUCM CLI over SSH
 - **Certificate Status** — List TLS certificates (own/trust) via CUCM CLI over SSH
 - **DRF Backup Status** — Check backup job status and history via CUCM CLI over SSH
 - **Packet Capture** — Start/stop captures via CUCM CLI over SSH, download `.cap` files via DIME
 - **Pcap Analysis** — Analyze captured pcaps locally via tshark: SIP flows, SCCP messages, RTP quality metrics
 - **SDL Trace Parser** — Parse SDL trace files into structured signals and call flows (local analysis)
+- **Rate Limiting** — Auto-retry with exponential backoff on CUCM rate limits (HTTP 503)
 
 ## Installation
 
@@ -77,7 +110,23 @@ Or pass credentials explicitly via the `env` block (not recommended — prefer s
 }
 ```
 
+### Verify Installation
+
+After setup, verify the connection by running:
+
+```
+→ guess_timezone_string({})
+{ "timezone": "Client: (GMT-6:0)America/Chicago" }
+```
+
 ## Configuration
+
+### Shared Credentials
+
+| Variable | Description |
+|----------|-------------|
+| `CUCM_USERNAME` | Shared default username (fallback for DIME, AXL, RIS, PerfMon, ControlCenter) |
+| `CUCM_PASSWORD` | Shared default password |
 
 ### DIME (HTTPS on :8443)
 
@@ -129,6 +178,16 @@ The pcap analysis tools require **tshark** (Wireshark CLI). Discovered automatic
 
 These APIs share the same credentials and port as DIME. No additional environment variables needed.
 
+### AXL WSDL Cache
+
+AXL WSDL and XSD schemas are cached to disk so `axl_list_operations` and `axl_describe_operation` return instantly after the first fetch. The cache has no expiration — it persists until manually cleared.
+
+| Variable | Description |
+|----------|-------------|
+| `CUCM_MCP_WSDL_CACHE_DIR` | Cache directory (default: `~/.cisco-cucm-mcp/wsdl-cache/`) |
+
+Cache files are stored as `{host}_{port}.json`. To force a re-fetch, delete the cache directory or call `clearWsdlCache()` programmatically.
+
 ### Capture State Persistence
 
 Packet capture metadata is persisted to a local JSON file for recovery after MCP restarts.
@@ -149,7 +208,11 @@ Packet capture metadata is persisted to a local JSON file for recovery after MCP
 | `select_logs` | Query log files with date/time criteria |
 | `select_logs_minutes` | Convenience: find logs from the last N minutes |
 | `select_syslog_minutes` | Convenience: find system logs from the last N minutes |
+| `select_sip_traces` | Preset: collect SIP traces (CallManager + CTIManager) |
+| `select_cti_traces` | Preset: collect CTI traces (CTIManager + Extension Mobility) |
+| `select_curri_logs` | Preset: collect CURRI external call control logs |
 | `download_file` | Download a single file via DIME |
+| `download_batch` | Download multiple files in one operation (max 20, partial failure tolerant) |
 
 ### AXL (Phone Configuration)
 
@@ -157,6 +220,10 @@ Packet capture metadata is persisted to a local JSON file for recovery after MCP
 |------|-------------|
 | `axl_execute` | Execute any AXL SOAP operation |
 | `axl_download_wsdl` | Download the AXL WSDL schema |
+| `axl_list_operations` | Parse WSDL — list all AXL operations grouped by type (list/get/add/update/remove) |
+| `axl_describe_operation` | Parse WSDL — describe input/output schema for a specific operation |
+| `get_trace_config` | Get current trace/debug level for a service (via AXL SQL) |
+| `set_trace_level` | Set debug trace level for a service — Error through Detailed |
 | `phone_packet_capture_enable` | Enable packet capture on a phone (updatePhone + applyPhone) |
 
 ### RisPort70 (Real-time Device Status)
@@ -194,6 +261,10 @@ Packet capture metadata is persisted to a local JSON file for recovery after MCP
 | Tool | Description |
 |------|-------------|
 | `get_service_status` | Query CUCM service status — Started, Stopped, Not Activated (read-only) |
+| `list_services_extended` | List all deployable services with activation status (ControlCenterServicesEx) |
+| `start_service` | Start one or more CUCM services (destructive) |
+| `stop_service` | Stop one or more CUCM services (destructive) |
+| `restart_service` | Restart one or more CUCM services (destructive) |
 
 ### Cluster Health
 
@@ -220,6 +291,8 @@ Packet capture metadata is persisted to a local JSON file for recovery after MCP
 |------|-------------|
 | `show_version` | Get CUCM version info (active/inactive version + build) |
 | `show_network_cluster` | Get cluster node topology — hostname, IP, type, hub/spoke, replication status |
+| `show_status` | System health: hostname, platform, CPU%, memory, disk usage, uptime |
+| `show_network_eth0` | Network details: IP address, subnet, gateway, DNS, link speed, duplex |
 
 ### Packet Capture (SSH + DIME)
 
@@ -802,6 +875,25 @@ Removed 1 counter(s) from session 963603f4-15b0-11f1-8000-000c2917beb2
 }
 ```
 
+## What Tool Do I Use?
+
+| I want to... | Use these tools |
+|---|---|
+| Check phone registration | `select_cm_device` or `select_cm_device_all` |
+| Debug SIP call setup | `select_sip_traces` → `download_batch` → `sdl_trace_parse` |
+| Debug CURRI routing | `select_curri_logs` → `download_file` |
+| Monitor call volume | `perfmon_collect_counter_data` (Cisco CallManager object) |
+| Debug call quality | `packet_capture_start` → `pcap_sip_calls` + `pcap_rtp_streams` |
+| Check cluster health | `cluster_health_check` (one-shot parallel) |
+| Find recent logs | `select_logs_minutes` → `download_file` |
+| Download many logs | `select_sip_traces` → `download_batch` |
+| Query phone config | `axl_execute` with listPhone/getPhone |
+| Discover AXL operations | `axl_list_operations` → `axl_describe_operation` |
+| Check system resources | `show_status` (CPU, memory, disk, uptime) |
+| Debug network issues | `show_network_eth0` (IP, gateway, DNS) |
+| Check/change trace level | `get_trace_config` → `set_trace_level` (Detailed for debugging) |
+| Restart stuck service | `restart_service` (requires confirmation) |
+
 ## Recommended Workflows
 
 ### Cluster Health Assessment
@@ -897,60 +989,21 @@ curl -k -u "$CUCM_DIME_USERNAME:$CUCM_DIME_PASSWORD" \
   -o /dev/null -w "%{http_code}\n"
 ```
 
-## v0.6.0 Changes
+## Troubleshooting
 
-### New Tools (7)
+| Problem | Solution |
+|---------|----------|
+| Auth failures | Verify with `curl -k -u "$CUCM_DIME_USERNAME:$CUCM_DIME_PASSWORD" "https://host:8443/logcollectionservice2/services/LogCollectionPortTypeService?wsdl" -o /dev/null -w "%{http_code}\n"` — should return `200` |
+| Rate limiting (HTTP 503) | RIS/PerfMon enforce ~15 req/min. Auto-retry with 5s→10s→20s backoff is built in. |
+| `tshark` not found | pcap analysis tools require Wireshark CLI — `brew install wireshark` (macOS) or `apt install tshark` (Linux) |
+| Self-signed TLS errors | Set `CUCM_MCP_TLS_MODE=permissive` (default) or add CUCM cert to system trust store |
+| SSH "too many auth failures" | CUCM requires `keyboard-interactive` auth — handled automatically by this server |
+| Node.js version | Requires Node.js >= 18 (for native `fetch` API) |
+| Service control fails | ControlCenterServicesEx requires Standard Admin role on the CUCM user account |
 
-- **RIS Pagination** — `select_cm_device_all` auto-paginates via StateInfo to return ALL devices (clusters >1000 phones). `select_cm_device` now returns `stateInfo` cursor for manual pagination.
-- **CTI Status** — `select_cti_item` queries real-time CTI ports, route points, and application connections via RisPort70
-- **PerfMon** — `perfmon_remove_counter` removes counters from a session without closing it (completes the session lifecycle)
-- **SSH CLI** — `show_version` and `show_network_cluster` for version info and cluster topology
-- **CDR Download** — `cdr_download_file` downloads CDR/CMR files by filename (closes the CDR workflow)
+## Changelog
 
-### Improvements
-
-- **Rate Limit Handling** — All Serviceability SOAP calls (RIS, PerfMon, ControlCenter) now auto-retry on CUCM rate limits (HTTP 503 or "Exceeded allowed rate" SOAP faults) with exponential backoff: 5s → 10s → 20s (3 retries max).
-
-### Bug Fixes
-
-| Fix | Details |
-|-----|---------|
-| RIS StateInfo pagination | `selectCmDevice` now extracts and returns the `StateInfo` pagination cursor from SOAP responses. Previously hardcoded empty, silently truncating results at 1000 devices. |
-| RIS maxReturnedDevices cap | Fixed from 2000 to 1000 (CUCM's actual per-call limit) |
-| cluster_health_check pagination | Now uses `selectCmDeviceAll` instead of single-page query — gets all devices instead of capping at 1000 |
-| CUCM 15 `show network cluster` | Parser handles headerless IP-first format used by CUCM 15 |
-
-### Test Suite
-
-181 tests across 17 files (15 new tests for pagination, CTI items, perfmon remove, CLI parsers).
-
-## v0.5.0 Changes
-
-### New Tools (12)
-
-- **PerfMon Sessions** — `perfmon_open_session`, `perfmon_add_counter`, `perfmon_collect_session_data`, `perfmon_close_session` for continuous counter monitoring
-- **Cluster Health** — `cluster_health_check` runs device registration + PerfMon + service status in parallel with partial failure tolerance
-- **Certificates** — `cert_list` lists own/trust TLS certificates via SSH CLI (supports both CUCM 15 single-line and older block formats)
-- **Backups** — `drf_backup_status` and `drf_backup_history` via SSH CLI
-- **CDR on Demand** — `cdr_get_file_list` and `cdr_get_file_list_minutes` via CDRonDemandService
-- **SDL Traces** — `sdl_trace_parse` and `sdl_trace_call_flow` for local SDL trace analysis
-
-### Bug Fixes
-
-| Fix | Details |
-|-----|---------|
-| SSH keyboard-interactive auth | CUCM rejects plain `password` auth — now forces `keyboard-interactive` via `authHandler` to prevent "too many authentication failures" |
-| SSH prompt detection | CUCM sends `\r\n` (CRLF) and standalone `\r` — prompt regex now normalizes line endings before matching |
-| SSH VT100 ANSI stripping | `stripAnsi()` removes escape codes from SSH terminal output before parsing — fixes cert/backup/CLI tools returning empty results |
-| CUCM 15 cert list format | `cert_list` now parses the CUCM 15 single-line format (`unit/name.pem: description`) in addition to the older multi-line block format |
-| SDL .gz decompression | `sdl_trace_parse` and `sdl_trace_call_flow` auto-decompress `.gz` files via `gunzipSync` |
-| SOAP HTTP 500 error parsing | HTTP 500 with SOAP fault body now extracts the `faultstring` instead of dumping raw XML |
-| DRF backup history parser | Handles CUCM 15 column order (device before date) via date-detection heuristic |
-| ControlCenter error format | Service status errors now return readable strings instead of `[object Object]` |
-
-### Test Suite
-
-166 tests across 16 files covering SOAP fault extraction, SSH prompt patterns, ANSI stripping, certificate parsing (both formats), CDR parsing, backup history, pcap analysis, SDL traces, and more.
+See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ## Development
 

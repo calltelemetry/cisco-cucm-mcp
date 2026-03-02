@@ -422,3 +422,131 @@ export function writeDownloadedFile(result: { server: string; filename: string; 
   writeFileSync(filePath, result.data);
   return { filePath, bytes: result.data.length, baseName };
 }
+
+// ---------------------------------------------------------------------------
+// Batch download
+// ---------------------------------------------------------------------------
+
+export type BatchDownloadResult = {
+  filePath: string;
+  bytes: number;
+  fileName: string;
+};
+
+export type BatchDownloadError = {
+  fileName: string;
+  error: string;
+};
+
+// ---------------------------------------------------------------------------
+// selectLogsCluster — fan out log collection to all cluster nodes
+// ---------------------------------------------------------------------------
+
+export type ClusterLogResult = {
+  host: string;
+  files: SelectedLogFile[];
+  error?: string;
+};
+
+/**
+ * Discover cluster nodes via SSH `show network cluster`, then run
+ * `selectLogsMinutes()` against each node in parallel.
+ * Returns partial results — individual node failures don't abort the whole operation.
+ */
+export async function selectLogsCluster(
+  publisherHost: string,
+  minutesBack: number,
+  select: Pick<SelectLogsCriteria, "serviceLogs" | "systemLogs" | "searchStr">,
+  opts?: {
+    timezone?: string;
+    auth?: DimeAuth;
+    sshAuth?: { username: string; password: string };
+    port?: number;
+    sshPort?: number;
+  },
+): Promise<{ nodes: ClusterLogResult[] }> {
+  // Lazy import to avoid circular deps
+  const { showNetworkCluster } = await import("./cli-tools.js");
+
+  const sshAuth = opts?.sshAuth ?? {
+    username: opts?.auth?.username || process.env.CUCM_SSH_USERNAME || process.env.CUCM_USERNAME || process.env.CUCM_DIME_USERNAME || "",
+    password: opts?.auth?.password || process.env.CUCM_SSH_PASSWORD || process.env.CUCM_PASSWORD || process.env.CUCM_DIME_PASSWORD || "",
+  };
+
+  const cluster = await showNetworkCluster(publisherHost, {
+    auth: sshAuth,
+    sshPort: opts?.sshPort,
+  });
+
+  // Build list of unique IPs/hostnames to query
+  const hosts = new Set<string>();
+  for (const node of cluster.nodes) {
+    if (node.ipAddress) hosts.add(node.ipAddress);
+    else if (node.hostname) hosts.add(node.hostname);
+  }
+  // Always include the publisher itself
+  hosts.add(publisherHost);
+
+  if (hosts.size === 0) {
+    throw new Error("No cluster nodes discovered");
+  }
+
+  const results = await Promise.allSettled(
+    [...hosts].map(async (host): Promise<ClusterLogResult> => {
+      const result = await selectLogsMinutes(host, minutesBack, select, opts?.timezone, opts?.auth, opts?.port);
+      return { host, files: result.files };
+    }),
+  );
+
+  const nodes: ClusterLogResult[] = results.map((r, i) => {
+    const host = [...hosts][i]!;
+    if (r.status === "fulfilled") return r.value;
+    const error = r.reason instanceof Error ? r.reason.message : String(r.reason);
+    return { host, files: [], error };
+  });
+
+  return { nodes };
+}
+
+// ---------------------------------------------------------------------------
+// downloadBatch
+// ---------------------------------------------------------------------------
+
+const MAX_BATCH_FILES = 20;
+
+export async function downloadBatch(
+  hostOrUrl: string,
+  filePaths: string[],
+  opts?: {
+    auth?: DimeAuth;
+    port?: number;
+    outDir?: string;
+  },
+): Promise<{ downloaded: BatchDownloadResult[]; errors: BatchDownloadError[] }> {
+  const paths = (filePaths || []).map(String).filter((p) => p.trim() !== "");
+  if (paths.length === 0) throw new Error("downloadBatch requires at least one filePath");
+  if (paths.length > MAX_BATCH_FILES) {
+    throw new Error(`downloadBatch limited to ${MAX_BATCH_FILES} files per call (got ${paths.length})`);
+  }
+
+  const outDir = opts?.outDir || join("/tmp", "cucm-mcp");
+  const downloaded: BatchDownloadResult[] = [];
+  const errors: BatchDownloadError[] = [];
+
+  for (const fp of paths) {
+    try {
+      const result = await getOneFile(hostOrUrl, fp, opts?.auth, opts?.port);
+      const saved = writeDownloadedFile(result, join(outDir, result.filename.split("/").filter(Boolean).pop() || "file.bin"));
+      downloaded.push({
+        filePath: saved.filePath,
+        bytes: saved.bytes,
+        fileName: fp,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      errors.push({ fileName: fp, error: msg });
+    }
+  }
+
+  return { downloaded, errors };
+}

@@ -15,6 +15,8 @@ import {
   getOneFile,
   getOneFileAnyWithRetry,
   writeDownloadedFile,
+  downloadBatch,
+  selectLogsCluster,
   type DimeAuth,
 } from "./dime.js";
 import { guessTimezoneString } from "./time.js";
@@ -25,18 +27,22 @@ import { pcapCallSummary, pcapSipCalls, pcapScppMessages, pcapRtpStreams, pcapPr
 import { selectCmDevice, selectCmDeviceAll, selectCmDeviceByIp, selectCtiItem, type SelectCmDeviceArgs, type SelectCtiItemArgs } from "./risport.js";
 import { perfmonCollectCounterData, perfmonListCounter, perfmonListInstance, perfmonOpenSession, perfmonAddCounter, perfmonRemoveCounter, perfmonCollectSessionData, perfmonCloseSession } from "./perfmon.js";
 import { getServiceStatus } from "./controlcenter.js";
+import { startService, stopService, restartService, getStaticServiceListExtended } from "./controlcenter-ext.js";
 import { cdrGetFileList, cdrGetFileListMinutes, cdrDownloadFile } from "./cdr-on-demand.js";
-import { showVersion, showNetworkCluster } from "./cli-tools.js";
+import { showVersion, showNetworkCluster, showStatus, showNetworkEth0 } from "./cli-tools.js";
 import { clusterHealthCheck } from "./cluster-health.js";
 import { listCertificates } from "./certificates.js";
 import { getBackupStatus, getBackupHistory } from "./drf-backup.js";
 import { parseSdlTrace, extractCallFlow } from "./sdl-trace.js";
+import { selectSipTraces, selectCtiTraces, selectCurriLogs } from "./log-presets.js";
+import { getTraceConfig, setTraceLevel, TRACE_LEVELS } from "./trace-config.js";
+import { listAxlOperations, describeAxlOperation } from "./axl-wsdl.js";
 import { setupPermissiveTls } from "./tls.js";
 import { formatUnknownError } from "./errors.js";
 
 setupPermissiveTls();
 
-const server = new McpServer({ name: "cucm", version: "0.6.1" });
+const server = new McpServer({ name: "cucm", version: "0.7.0" });
 const captures = new PacketCaptureManager();
 const captureState = defaultStateStore();
 
@@ -1541,6 +1547,410 @@ server.tool(
     try {
       const result = await cdrDownloadFile(host, fileName, outFile, auth as DimeAuth | undefined, port);
       return { content: [{ type: "text", text: `Downloaded ${fileName} (${result.bytes} bytes)\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Service Control (ControlCenterServicesEx)
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "start_service",
+  "Start one or more CUCM services via ControlCenterServicesEx. " +
+    "DESTRUCTIVE: starts services on the CUCM node. Use with caution.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    serviceNames: z.array(z.string().min(1)).min(1).describe("Service names to start (e.g. ['Cisco CallManager'])"),
+    timeoutMs: z.number().int().min(1000).max(300_000).optional(),
+  },
+  WRITE_DESTRUCTIVE,
+  async ({ host, port, auth, serviceNames, timeoutMs }) => {
+    try {
+      const result = await startService(host, serviceNames, auth as DimeAuth | undefined, port, timeoutMs);
+      return { content: [{ type: "text", text: `Started ${serviceNames.length} service(s)\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "stop_service",
+  "Stop one or more CUCM services via ControlCenterServicesEx. " +
+    "DESTRUCTIVE: stops services on the CUCM node. Use with caution.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    serviceNames: z.array(z.string().min(1)).min(1).describe("Service names to stop"),
+    timeoutMs: z.number().int().min(1000).max(300_000).optional(),
+  },
+  WRITE_DESTRUCTIVE,
+  async ({ host, port, auth, serviceNames, timeoutMs }) => {
+    try {
+      const result = await stopService(host, serviceNames, auth as DimeAuth | undefined, port, timeoutMs);
+      return { content: [{ type: "text", text: `Stopped ${serviceNames.length} service(s)\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "restart_service",
+  "Restart one or more CUCM services via ControlCenterServicesEx. " +
+    "DESTRUCTIVE: restarts services on the CUCM node. Use with caution.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    serviceNames: z.array(z.string().min(1)).min(1).describe("Service names to restart"),
+    timeoutMs: z.number().int().min(1000).max(300_000).optional(),
+  },
+  WRITE_DESTRUCTIVE,
+  async ({ host, port, auth, serviceNames, timeoutMs }) => {
+    try {
+      const result = await restartService(host, serviceNames, auth as DimeAuth | undefined, port, timeoutMs);
+      return { content: [{ type: "text", text: `Restarted ${serviceNames.length} service(s)\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "list_services_extended",
+  "List all deployable CUCM services with activation status via ControlCenterServicesEx. " +
+    "Richer than get_service_status — shows service type and whether each service is activated/deployable.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    timeoutMs: z.number().int().min(1000).max(120_000).optional(),
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, port, auth, timeoutMs }) => {
+    try {
+      const result = await getStaticServiceListExtended(host, auth as DimeAuth | undefined, port, timeoutMs);
+      return { content: [{ type: "text", text: `Found ${result.length} service(s)\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Log Presets (Schema-Aware Service Discovery)
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "select_sip_traces",
+  "Collect SIP-related traces from Cisco CallManager and CTIManager. " +
+    "Returns SDL trace files containing SIP signaling (INVITE/BYE), call setup flows, and codec negotiation.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    minutesBack: z.number().int().min(1).max(10080).optional().describe("Minutes back from now (default 60)"),
+    searchStr: z.string().optional().describe("Optional filename substring filter"),
+    timezone: z.string().optional().describe("DIME timezone string (auto-detected if omitted)"),
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, port, auth, minutesBack, searchStr, timezone }) => {
+    try {
+      const result = await selectSipTraces({ host, minutesBack, searchStr, timezone, auth: auth as DimeAuth | undefined, port });
+      return { content: [{ type: "text", text: `Found ${result.files.length} SIP trace file(s) [${result.services.join(", ")}]\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "select_cti_traces",
+  "Collect CTI-related traces from CTIManager and Extension Mobility. " +
+    "Useful for debugging CTI port/route point issues and Extension Mobility login problems.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    minutesBack: z.number().int().min(1).max(10080).optional().describe("Minutes back from now (default 60)"),
+    searchStr: z.string().optional().describe("Optional filename substring filter"),
+    timezone: z.string().optional().describe("DIME timezone string (auto-detected if omitted)"),
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, port, auth, minutesBack, searchStr, timezone }) => {
+    try {
+      const result = await selectCtiTraces({ host, minutesBack, searchStr, timezone, auth: auth as DimeAuth | undefined, port });
+      return { content: [{ type: "text", text: `Found ${result.files.length} CTI trace file(s) [${result.services.join(", ")}]\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "select_curri_logs",
+  "Collect CURRI (Cisco Unified Routing Rules Interface) logs for external call control. " +
+    "Captures XACML policy decisions for hybrid call routing scenarios.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    minutesBack: z.number().int().min(1).max(10080).optional().describe("Minutes back from now (default 60)"),
+    searchStr: z.string().optional().describe("Optional filename substring filter"),
+    timezone: z.string().optional().describe("DIME timezone string (auto-detected if omitted)"),
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, port, auth, minutesBack, searchStr, timezone }) => {
+    try {
+      const result = await selectCurriLogs({ host, minutesBack, searchStr, timezone, auth: auth as DimeAuth | undefined, port });
+      return { content: [{ type: "text", text: `Found ${result.files.length} CURRI log file(s) [${result.services.join(", ")}]\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Batch Download
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "download_batch",
+  "Download multiple files from CUCM via DIME in one operation. " +
+    "Partial failures are tolerated — successfully downloaded files are returned alongside errors. Max 20 files.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: dimeAuthSchema,
+    filePaths: z.array(z.string().min(1)).min(1).max(20).describe("File paths to download (from select_logs/select_sip_traces results)"),
+    outDir: z.string().optional().describe("Output directory (default /tmp/cucm-mcp/)"),
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, port, auth, filePaths, outDir }) => {
+    try {
+      const result = await downloadBatch(host, filePaths, { auth: auth as DimeAuth | undefined, port, outDir });
+      const summary = `Downloaded ${result.downloaded.length}/${filePaths.length} file(s)` +
+        (result.errors.length > 0 ? `, ${result.errors.length} error(s)` : "");
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "select_logs_cluster",
+  "Discover all cluster nodes via SSH, then query logs from EVERY node in parallel. " +
+    "Partial failures are tolerated — nodes that fail return an error entry alongside successful results. " +
+    "Requires SSH access (for cluster discovery) and DIME access (for log queries).",
+  {
+    host: z.string().describe("CUCM publisher host/IP (used for SSH cluster discovery)"),
+    port: z.number().int().min(1).max(65535).optional().describe("DIME port (default 8443)"),
+    sshPort: z.number().int().min(1).max(65535).optional().describe("SSH port (default 22)"),
+    auth: dimeAuthSchema.describe("DIME auth (also used as SSH fallback)"),
+    sshAuth: sshAuthSchema.describe("SSH auth override (optional — falls back to DIME auth / env vars)"),
+    minutesBack: z.number().int().min(1).max(10080).default(60).describe("How many minutes of logs to collect (default 60)"),
+    serviceLogs: z.array(z.string()).optional().describe("CUCM service names to collect logs from"),
+    systemLogs: z.array(z.string()).optional().describe("System log names to collect"),
+    searchStr: z.string().optional().describe("Filter string"),
+    timezone: z.string().optional().describe("Timezone string (default: auto-detect)"),
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, port, sshPort, auth, sshAuth, minutesBack, serviceLogs, systemLogs, searchStr, timezone }) => {
+    try {
+      const result = await selectLogsCluster(
+        host,
+        minutesBack,
+        { serviceLogs, systemLogs, searchStr },
+        {
+          timezone,
+          auth: auth as DimeAuth | undefined,
+          sshAuth: sshAuth as { username: string; password: string } | undefined,
+          port,
+          sshPort,
+        },
+      );
+      const totalFiles = result.nodes.reduce((sum, n) => sum + n.files.length, 0);
+      const errorNodes = result.nodes.filter((n) => n.error).length;
+      const summary = `${result.nodes.length} node(s), ${totalFiles} file(s) found` +
+        (errorNodes > 0 ? `, ${errorNodes} node(s) with errors` : "");
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// AXL WSDL Self-Discovery
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "axl_list_operations",
+  "Parse the AXL WSDL and return all available operations grouped by type (list/get/add/update/remove/do/apply). " +
+    "Use this to discover what AXL operations are available before calling axl_execute.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: axlAuthSchema,
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, port, auth }) => {
+    try {
+      const resolvedAuth = {
+        username: auth?.username || process.env.CUCM_AXL_USERNAME || process.env.CUCM_USERNAME || process.env.CUCM_DIME_USERNAME || "",
+        password: auth?.password || process.env.CUCM_AXL_PASSWORD || process.env.CUCM_PASSWORD || process.env.CUCM_DIME_PASSWORD || "",
+      };
+      if (!resolvedAuth.username || !resolvedAuth.password) throw new Error("Missing AXL credentials");
+      const result = await listAxlOperations(host, resolvedAuth, port);
+      return { content: [{ type: "text", text: `${result.totalOperations} AXL operation(s)\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "axl_describe_operation",
+  "Parse the AXL WSDL for a specific operation and return its input/output field schema. " +
+    "Use after axl_list_operations to understand what fields an operation expects.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: axlAuthSchema,
+    operation: z.string().min(1).describe("AXL operation name (e.g. listPhone, getLine, addPhone)"),
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, port, auth, operation }) => {
+    try {
+      const resolvedAuth = {
+        username: auth?.username || process.env.CUCM_AXL_USERNAME || process.env.CUCM_USERNAME || process.env.CUCM_DIME_USERNAME || "",
+        password: auth?.password || process.env.CUCM_AXL_PASSWORD || process.env.CUCM_PASSWORD || process.env.CUCM_DIME_PASSWORD || "",
+      };
+      if (!resolvedAuth.username || !resolvedAuth.password) throw new Error("Missing AXL credentials");
+      const result = await describeAxlOperation(host, resolvedAuth, operation, port);
+      return { content: [{ type: "text", text: `${operation}: ${result.inputFields.length} input field(s), ${result.outputFields.length} output field(s)\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Trace Configuration
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "get_trace_config",
+  "Get the current trace/debug level for a CUCM service. " +
+    "Uses AXL SQL to query the internal trace configuration tables. " +
+    "Returns trace level (Error → Detailed), enabled status, and raw config.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: axlAuthSchema,
+    serviceName: z.string().min(1).describe("CUCM service name (e.g. 'Cisco CallManager', 'Cisco CTIManager')"),
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, port, auth, serviceName }) => {
+    try {
+      const result = await getTraceConfig(host, serviceName, {
+        auth: auth as AxlAuth | undefined,
+        port,
+      });
+      const summary = result.map((r) => `${r.service}: ${r.traceLevel} (enabled=${r.enabled})`).join(", ");
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "set_trace_level",
+  "Set the debug trace level for a CUCM service via AXL SQL. " +
+    "Changes take effect immediately for most services. " +
+    "Levels (least→most verbose): Error, Special, State Transition, Significant, Entry/Exit, Arbitrary, Detailed. " +
+    "WARNING: Detailed tracing impacts performance — use only for active debugging.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    port: z.number().int().min(1).max(65535).optional(),
+    auth: axlAuthSchema,
+    serviceName: z.string().min(1).describe("CUCM service name (e.g. 'Cisco CallManager', 'Cisco CTIManager')"),
+    level: z.enum(TRACE_LEVELS).describe("Debug trace level"),
+    enableTrace: z.boolean().optional().default(true).describe("Enable tracing (default: true)"),
+  },
+  WRITE_DESTRUCTIVE,
+  async ({ host, port, auth, serviceName, level, enableTrace }) => {
+    try {
+      const result = await setTraceLevel(host, serviceName, level, {
+        auth: auth as AxlAuth | undefined,
+        port,
+        enableTrace,
+      });
+      const summary = `${result.service}: ${result.previousLevel} → ${result.newLevel} (${result.rowsUpdated} row(s) updated)`;
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// SSH Diagnostic Tools (Extended)
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "show_status",
+  "Get CUCM system status via SSH (show status). Returns hostname, platform, CPU%, memory, disk usage, and uptime.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    sshPort: z.number().int().min(1).max(65535).optional(),
+    auth: sshAuthSchema,
+    timeoutMs: z.number().int().min(5000).max(120_000).optional(),
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, sshPort, auth, timeoutMs }) => {
+    try {
+      const result = await showStatus(host, {
+        auth: auth as SshAuth | undefined,
+        sshPort,
+        timeoutMs,
+      });
+      const summary = `${result.hostname} | CPU: ${result.cpuPercent}% | Memory: ${result.memoryUsedMb}/${result.memoryTotalMb} MB | Uptime: ${result.uptime}`;
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "show_network_eth0",
+  "Get CUCM network interface details via SSH (show network eth0 detail). Returns IP, subnet, gateway, DNS, link speed, duplex.",
+  {
+    host: z.string().describe("CUCM host/IP"),
+    sshPort: z.number().int().min(1).max(65535).optional(),
+    auth: sshAuthSchema,
+    timeoutMs: z.number().int().min(5000).max(120_000).optional(),
+  },
+  READ_ONLY_NETWORK,
+  async ({ host, sshPort, auth, timeoutMs }) => {
+    try {
+      const result = await showNetworkEth0(host, {
+        auth: auth as SshAuth | undefined,
+        sshPort,
+        timeoutMs,
+      });
+      const summary = `${result.ipAddress}/${result.ipMask} | GW: ${result.gateway} | DNS: ${result.dnsPrimary} | ${result.speed} ${result.duplex}`;
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
     } catch (e) {
       return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
     }

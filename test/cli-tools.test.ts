@@ -1,4 +1,4 @@
-import { parseShowVersion, parseShowNetworkCluster } from '../src/cli-tools.js';
+import { parseShowVersion, parseShowNetworkCluster, parseShowStatus, parseShowNetworkEth0 } from '../src/cli-tools.js';
 
 describe('parseShowVersion', () => {
   it('parses CUCM 15 active version', () => {
@@ -98,5 +98,105 @@ cucm15-cluster1`;
     const nodes = parseShowNetworkCluster(output);
     expect(nodes).toHaveLength(2);
     expect(nodes[0]!.id).toBe('1');
+  });
+});
+
+describe('parseShowStatus', () => {
+  it('parses hostname and platform', () => {
+    const output = `Host Name            : cucm15-cluster1
+Platform             : VMware Virtual Platform
+Uptime              : 45 days, 3:22`;
+
+    const r = parseShowStatus(output);
+    expect(r.hostname).toBe('cucm15-cluster1');
+    expect(r.platform).toBe('VMware Virtual Platform');
+    expect(r.uptime).toBe('45 days, 3:22');
+  });
+
+  it('parses CPU and memory usage', () => {
+    const output = `CPU Usage            : 23%
+Memory Usage (Total) : 6144 MB
+Memory Usage (Used)  : 3072 MB`;
+
+    const r = parseShowStatus(output);
+    expect(r.cpuPercent).toBe(23);
+    expect(r.memoryTotalMb).toBe(6144);
+    expect(r.memoryUsedMb).toBe(3072);
+  });
+
+  it('parses disk usage entries', () => {
+    const output = `Common              : 25000 MB total, 12000 MB used (48%)
+Boot                : 1000 MB total, 500 MB used (50%)`;
+
+    const r = parseShowStatus(output);
+    expect(r.disks).toHaveLength(2);
+    expect(r.disks[0]!.partition).toBe('Common');
+    expect(r.disks[0]!.totalMb).toBe(25000);
+    expect(r.disks[0]!.usedMb).toBe(12000);
+    expect(r.disks[0]!.percent).toBe(48);
+    expect(r.disks[1]!.partition).toBe('Boot');
+  });
+
+  it('returns defaults for empty output', () => {
+    const r = parseShowStatus('');
+    expect(r.hostname).toBe('');
+    expect(r.platform).toBe('');
+    expect(r.cpuPercent).toBe(0);
+    expect(r.memoryTotalMb).toBe(0);
+    expect(r.memoryUsedMb).toBe(0);
+    expect(r.disks).toEqual([]);
+    expect(r.uptime).toBe('');
+  });
+});
+
+describe('parseShowNetworkEth0', () => {
+  it('parses basic network info', () => {
+    const output = `DHCP        : disabled
+IP Address  : 192.168.125.10
+IP Mask     : 255.255.255.0
+Link Detected: yes
+Speed       : 10000Mb/s
+Duplex      : Full
+Gateway     : 192.168.125.1`;
+
+    const r = parseShowNetworkEth0(output);
+    expect(r.dhcp).toBe('disabled');
+    expect(r.ipAddress).toBe('192.168.125.10');
+    expect(r.ipMask).toBe('255.255.255.0');
+    expect(r.linkDetected).toBe('yes');
+    expect(r.speed).toBe('10000Mb/s');
+    expect(r.duplex).toBe('Full');
+    expect(r.gateway).toBe('192.168.125.1');
+  });
+
+  it('parses DNS section', () => {
+    const output = `DNS
+  Primary   : 192.168.125.1
+  Secondary : 8.8.8.8`;
+
+    const r = parseShowNetworkEth0(output);
+    expect(r.dnsPrimary).toBe('192.168.125.1');
+    expect(r.dnsSecondary).toBe('8.8.8.8');
+  });
+
+  it('returns empty strings for empty output', () => {
+    const r = parseShowNetworkEth0('');
+    expect(r.dhcp).toBe('');
+    expect(r.ipAddress).toBe('');
+    expect(r.ipMask).toBe('');
+    expect(r.gateway).toBe('');
+    expect(r.dnsPrimary).toBe('');
+    expect(r.dnsSecondary).toBe('');
+  });
+
+  it('handles missing optional fields', () => {
+    const output = `IP Address  : 10.0.0.5
+Gateway     : 10.0.0.1`;
+
+    const r = parseShowNetworkEth0(output);
+    expect(r.ipAddress).toBe('10.0.0.5');
+    expect(r.gateway).toBe('10.0.0.1');
+    expect(r.dhcp).toBe('');
+    expect(r.speed).toBe('');
   });
 });
