@@ -1,11 +1,11 @@
-**Built by [Call Telemetry](https://calltelemetry.com) — realtime tools for Cisco Collaboration.**
+# cisco-cucm-mcp
 
-# Cisco CUCM MCP
-
-[![npm version](https://img.shields.io/npm/v/@calltelemetry/cisco-cucm-mcp?label=npm)](https://www.npmjs.com/package/@calltelemetry/cisco-cucm-mcp)
-[![npm downloads](https://img.shields.io/npm/dm/@calltelemetry/cisco-cucm-mcp)](https://www.npmjs.com/package/@calltelemetry/cisco-cucm-mcp)
 [![CI](https://github.com/calltelemetry/cisco-cucm-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/calltelemetry/cisco-cucm-mcp/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@calltelemetry/cisco-cucm-mcp)](https://www.npmjs.com/package/@calltelemetry/cisco-cucm-mcp)
+[![npm downloads](https://img.shields.io/npm/dm/@calltelemetry/cisco-cucm-mcp)](https://www.npmjs.com/package/@calltelemetry/cisco-cucm-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+Built by [Call Telemetry](https://calltelemetry.com) — realtime tools for Cisco Collaboration.
 
 [![Install in Claude Code](https://img.shields.io/badge/Claude_Code-Install-5A28E4?logo=claude)](https://claude.ai/mcp/install?repo=calltelemetry/cisco-cucm-mcp)
 [![Install in Cursor](https://img.shields.io/badge/Cursor-Install-2D2D2D?logo=cursor)](https://cursor.com/mcp/install?repo=calltelemetry/cisco-cucm-mcp)
