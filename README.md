@@ -1,8 +1,10 @@
+**Built by [Call Telemetry](https://calltelemetry.com) — realtime tools for Cisco Collaboration.**
+
 # Cisco CUCM MCP
 
-[![npm](https://img.shields.io/npm/v/@calltelemetry/cisco-cucm-mcp)](https://www.npmjs.com/package/@calltelemetry/cisco-cucm-mcp)
+[![npm version](https://img.shields.io/npm/v/@calltelemetry/cisco-cucm-mcp?label=npm)](https://www.npmjs.com/package/@calltelemetry/cisco-cucm-mcp)
+[![npm downloads](https://img.shields.io/npm/dm/@calltelemetry/cisco-cucm-mcp)](https://www.npmjs.com/package/@calltelemetry/cisco-cucm-mcp)
 [![CI](https://github.com/calltelemetry/cisco-cucm-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/calltelemetry/cisco-cucm-mcp/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/calltelemetry/cisco-cucm-mcp/branch/main/graph/badge.svg)](https://codecov.io/gh/calltelemetry/cisco-cucm-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 [![Install in Claude Code](https://img.shields.io/badge/Claude_Code-Install-5A28E4?logo=claude)](https://claude.ai/mcp/install?repo=calltelemetry/cisco-cucm-mcp)
