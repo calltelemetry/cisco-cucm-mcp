@@ -1,11 +1,11 @@
-**Built by [Call Telemetry](https://calltelemetry.com) — realtime tools for Cisco Collaboration.**
+# cisco-cucm-mcp
 
-# Cisco CUCM MCP
-
-[![npm version](https://img.shields.io/npm/v/@calltelemetry/cisco-cucm-mcp?label=npm)](https://www.npmjs.com/package/@calltelemetry/cisco-cucm-mcp)
-[![npm downloads](https://img.shields.io/npm/dm/@calltelemetry/cisco-cucm-mcp)](https://www.npmjs.com/package/@calltelemetry/cisco-cucm-mcp)
 [![CI](https://github.com/calltelemetry/cisco-cucm-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/calltelemetry/cisco-cucm-mcp/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@calltelemetry/cisco-cucm-mcp)](https://www.npmjs.com/package/@calltelemetry/cisco-cucm-mcp)
+[![npm downloads](https://img.shields.io/npm/dm/@calltelemetry/cisco-cucm-mcp)](https://www.npmjs.com/package/@calltelemetry/cisco-cucm-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+Built by [Call Telemetry](https://calltelemetry.com) — realtime tools for Cisco Collaboration.
 
 [![Install in Claude Code](https://img.shields.io/badge/Claude_Code-Install-5A28E4?logo=claude)](https://claude.ai/mcp/install?repo=calltelemetry/cisco-cucm-mcp)
 [![Install in Cursor](https://img.shields.io/badge/Cursor-Install-2D2D2D?logo=cursor)](https://cursor.com/mcp/install?repo=calltelemetry/cisco-cucm-mcp)
@@ -334,321 +334,23 @@ These tools analyze downloaded `.cap` files so an LLM can reason about VoIP call
 |------|-------------|
 | `guess_timezone_string` | Build a DIME-compatible timezone string |
 
-## Examples (Real CUCM 15 Output)
+## Examples — LLM Conversations (Real CUCM 15 Output)
 
-All examples below are verified output from a live CUCM 15.0.1 cluster.
+All examples below are real interactions with a live CUCM 15.0.1 cluster, showing how an LLM uses the tools conversationally.
 
-### Discover Cluster Nodes and Service Logs
+---
 
-```
-→ list_node_service_logs({ host: "192.168.125.10" })
+### "What version of CUCM is running?"
 
-[
-  {
-    "server": "cucm15-cluster1.calltelemetry.local",
-    "count": 150,
-    "serviceLogs": [
-      "Cisco CallManager",
-      "Cisco CTIManager",
-      "Cisco Tftp",
-      "Cisco Certificate Change Notification",
-      "Cisco DRF Master",
-      ...
-    ]
-  }
-]
+> **User:** What version is my CUCM running?
+
+<details><summary>Tool call: <code>show_version</code></summary>
+
+```json
+{ "host": "192.168.125.10" }
 ```
 
-### Query Phone Inventory via AXL
-
-```
-→ axl_execute({
-    cucm_host: "192.168.125.10",
-    operation: "listPhone",
-    data: {
-      searchCriteria: { name: "SEP%" },
-      returnedTags: { name: "", model: "", description: "" }
-    }
-  })
-
-{
-  "phone": [
-    { "name": "SEP0022905C7710", "model": "Cisco 7975",  "description": "Auto 1000 7975 Phone3" },
-    { "name": "SEP000832C78E0F", "model": "Cisco 7821",  "description": "Jason 7821"            },
-    { "name": "SEP505C885DF37F", "model": "Cisco 9841",  "description": "Cisco 9841 SIP"        }
-  ]
-}
-```
-
-### Collect Recent Trace Files
-
-```
-→ select_logs_minutes({
-    host: "192.168.125.10",
-    serviceLogs: ["Cisco CallManager"],
-    minutesBack: 1440
-  })
-
-{
-  "fromDate": "02/28/26 9:45 AM",
-  "toDate": "03/01/26 9:45 AM",
-  "timezone": "Client: (GMT-6:0)America/Chicago",
-  "files": [
-    {
-      "server": "192.168.125.10",
-      "absolutePath": "/var/log/active/cm/trace/ccm/sdl/SDL001_100_000448.txt.gz",
-      "name": "SDL001_100_000448.txt.gz",
-      "filesize": 1049171,
-      "modifiedDate": "Sat Feb 28 15:05:28 PST 2026"
-    },
-    ...
-  ]
-}
-```
-
-### Query Registered Phones (RisPort70)
-
-```
-→ select_cm_device({
-    host: "192.168.125.10",
-    deviceClass: "Phone",
-    status: "Any",
-    selectItems: ["*"]
-  })
-
-{
-  "totalDevicesFound": 3,
-  "cmNodes": [
-    {
-      "name": "cucm15-cluster1",
-      "returnCode": "Ok",
-      "devices": [
-        {
-          "name": "SEP0022905C7710",
-          "ipAddress": "192.168.125.178",
-          "description": "Auto 1000 7975 Phone3",
-          "dirNumber": "1000-Registered",
-          "status": "Registered",
-          "protocol": "SCCP",
-          "activeLoadId": "SCCP75.9-4-2SR4-3S"
-        },
-        {
-          "name": "SEP505C885DF37F",
-          "ipAddress": "192.168.125.234",
-          "description": "Auto 1003 9841",
-          "dirNumber": "1003-Registered",
-          "status": "Registered",
-          "protocol": "SIP",
-          "activeLoadId": "PHONEOS.3-2-1-0003-28"
-        },
-        {
-          "name": "SEP000832C78E0F",
-          "ipAddress": "192.168.125.85",
-          "description": "Auto 1001",
-          "dirNumber": "1001-Registered",
-          "status": "Registered",
-          "protocol": "SIP",
-          "activeLoadId": "sip78xx.14-3-1-0001-60"
-        }
-      ]
-    }
-  ]
-}
-```
-
-### Look Up Device by IP (RisPort70)
-
-```
-→ select_cm_device_by_ip({
-    host: "192.168.125.10",
-    ipAddress: "192.168.125.*"
-  })
-
-{
-  "totalDevicesFound": 3,
-  "cmNodes": [
-    {
-      "name": "cucm15-cluster1",
-      "returnCode": "Ok",
-      "devices": [
-        { "name": "SEP0022905C7710", "ipAddress": "192.168.125.178", "status": "Registered", "protocol": "SCCP" },
-        { "name": "SEP505C885DF37F", "ipAddress": "192.168.125.234", "status": "Registered", "protocol": "SIP"  },
-        { "name": "SEP000832C78E0F", "ipAddress": "192.168.125.85",  "status": "Registered", "protocol": "SIP"  }
-      ]
-    }
-  ]
-}
-```
-
-### Collect Performance Counters (PerfMon — One-Shot)
-
-```
-→ perfmon_collect_counter_data({
-    host: "192.168.125.10",
-    perfmonHost: "192.168.125.10",
-    object: "Cisco CallManager"
-  })
-
-[
-  { "name": "\\\\192.168.125.10\\Cisco CallManager\\CallsActive", "value": 0, "cStatus": 0 },
-  { "name": "\\\\192.168.125.10\\Cisco CallManager\\CallsAttempted", "value": 54, "cStatus": 0 },
-  { "name": "\\\\192.168.125.10\\Cisco CallManager\\CallsCompleted", "value": 44, "cStatus": 0 },
-  { "name": "\\\\192.168.125.10\\Cisco CallManager\\RegisteredHardwarePhones", "value": 3, "cStatus": 0 },
-  { "name": "\\\\192.168.125.10\\Cisco CallManager\\RegisteredOtherStationDevices", "value": 5, "cStatus": 0 }
-  // ... 134 counters total
-]
-```
-
-### PerfMon Session Lifecycle (Continuous Monitoring)
-
-**1. Open session:**
-
-```
-→ perfmon_open_session({ host: "192.168.125.10" })
-
-{ "sessionHandle": "087b08be-1585-11f1-8000-000c2917beb2" }
-```
-
-**2. Add counters (use `\\host\Object\Counter` format):**
-
-```
-→ perfmon_add_counter({
-    host: "192.168.125.10",
-    sessionHandle: "087b08be-1585-11f1-8000-000c2917beb2",
-    counters: [
-      "\\\\192.168.125.10\\Cisco CallManager\\CallsActive",
-      "\\\\192.168.125.10\\Cisco CallManager\\RegisteredHardwarePhones",
-      "\\\\192.168.125.10\\Processor\\% CPU Time"
-    ]
-  })
-
-Added 3 counter(s) to session 087b08be-1585-11f1-8000-000c2917beb2
-```
-
-**3. Poll values (call repeatedly to monitor trends):**
-
-```
-→ perfmon_collect_session_data({
-    host: "192.168.125.10",
-    sessionHandle: "087b08be-1585-11f1-8000-000c2917beb2"
-  })
-
-[
-  { "name": "\\\\192.168.125.10\\Cisco CallManager\\CallsActive", "value": 0, "cStatus": 0 },
-  { "name": "\\\\192.168.125.10\\Cisco CallManager\\RegisteredHardwarePhones", "value": 3, "cStatus": 0 },
-  { "name": "\\\\192.168.125.10\\Processor\\% CPU Time", "value": 0, "cStatus": 2 }
-]
-```
-
-**4. Close session when done:**
-
-```
-→ perfmon_close_session({
-    host: "192.168.125.10",
-    sessionHandle: "087b08be-1585-11f1-8000-000c2917beb2"
-  })
-
-Session 087b08be-1585-11f1-8000-000c2917beb2 closed
-```
-
-### Check Service Health (ControlCenter)
-
-```
-→ get_service_status({ host: "192.168.125.10" })
-
-[
-  { "serviceName": "Cisco CallManager",            "serviceStatus": "Started", "startTime": "..." },
-  { "serviceName": "Cisco CTIManager",             "serviceStatus": "Started", "startTime": "..." },
-  { "serviceName": "Cisco Tftp",                   "serviceStatus": "Started", "startTime": "..." },
-  { "serviceName": "Cisco AXL Web Service",        "serviceStatus": "Started", "startTime": "..." },
-  { "serviceName": "Cisco RIS Data Collector",     "serviceStatus": "Started", "startTime": "..." },
-  { "serviceName": "Cisco CDR Agent",              "serviceStatus": "Started", "startTime": "..." },
-  { "serviceName": "Cisco DHCP Monitor Service",   "serviceStatus": "Stopped", "startTime": ""    }
-  // ... 81 services total (65 Started, 16 Stopped)
-]
-```
-
-### Cluster Health Check (Parallel One-Shot)
-
-```
-→ cluster_health_check({ host: "192.168.125.10" })
-
-{
-  "devices": {
-    "totalDevicesFound": 3,
-    "cmNodes": [ ... ]
-  },
-  "counters": [
-    { "name": "\\\\192.168.125.10\\Cisco CallManager\\CallsActive", "value": 0 },
-    { "name": "\\\\192.168.125.10\\Cisco CallManager\\RegisteredHardwarePhones", "value": 3 }
-    // ... 134 counters
-  ],
-  "services": [
-    { "serviceName": "Cisco CallManager", "serviceStatus": "Started" },
-    ...
-  ],
-  "errors": []
-}
-```
-
-### List TLS Certificates (SSH CLI)
-
-```
-→ cert_list({ host: "192.168.125.10", type: "own" })
-
-[
-  { "unit": "tomcat",            "type": "own", "name": "tomcat",            "issuer": "Self-signed certificate generated by system" },
-  { "unit": "tomcat-ECDSA",     "type": "own", "name": "tomcat-ECDSA",     "issuer": "Self-signed certificate generated by system" },
-  { "unit": "ipsec",            "type": "own", "name": "ipsec",            "issuer": "Self-signed certificate generated by system" },
-  { "unit": "ITLRecovery",      "type": "own", "name": "ITLRecovery",      "issuer": "Self-signed certificate generated by system" },
-  { "unit": "CallManager-ECDSA","type": "own", "name": "CallManager-ECDSA","issuer": "Self-signed certificate generated by system" },
-  { "unit": "CallManager",      "type": "own", "name": "CallManager",      "issuer": "Self-signed certificate generated by system" },
-  { "unit": "CAPF",             "type": "own", "name": "CAPF",             "issuer": "Self-signed certificate generated by system" },
-  { "unit": "TVS",              "type": "own", "name": "TVS",              "issuer": "Self-signed certificate generated by system" }
-]
-```
-
-### DRF Backup Status (SSH CLI)
-
-```
-→ drf_backup_status({ host: "192.168.125.10" })
-
-{ "status": "IDLE", "rawOutput": "drfCliMsg: No backup status available" }
-```
-
-```
-→ drf_backup_history({ host: "192.168.125.10" })
-
-[
-  {
-    "date": "Fri Dec 12 13:45:19 PST 2025",
-    "component": "2025-12-12-13-44-12.tar",
-    "status": "SUCCESS",
-    "device": "NETWORK"
-  }
-]
-```
-
-### CDR on Demand
-
-```
-→ cdr_get_file_list_minutes({
-    host: "192.168.125.10",
-    minutesBack: 60
-  })
-
-// When CDR files exist:
-{ "files": [ { "fileName": "cdr_...", "fileSize": 1234 }, ... ] }
-
-// When none found (clean SOAP fault extraction):
-"No file found within the specified time range"
-```
-
-### CUCM Version Info (SSH CLI)
-
-```
-→ show_version({ host: "192.168.125.10" })
-
+```json
 {
   "activeVersion": "15.0.1.12900",
   "activeBuild": "234",
@@ -657,15 +359,51 @@ Session 087b08be-1585-11f1-8000-000c2917beb2 closed
 }
 ```
 
-### Cluster Topology (SSH CLI)
+</details>
 
+> **Assistant:** Your CUCM is running **15.0.1.12900** (build 234). There's no inactive version installed — this is a single-partition deployment.
+
+---
+
+### "How's the cluster health looking?"
+
+> **User:** Give me a quick health check on the cluster.
+
+The LLM calls three tools in parallel to assess system health:
+
+<details><summary>Tool call: <code>show_status</code> — CPU, memory, disk</summary>
+
+```json
+{ "host": "192.168.125.10" }
 ```
-→ show_network_cluster({ host: "192.168.125.10" })
 
+```json
+{
+  "hostname": "cucm15-cluster1",
+  "platform": "15.0.1.12900-234.x86_64",
+  "cpuPercent": 49.75,
+  "memoryTotalMb": 11718,
+  "memoryUsedMb": 7173,
+  "disks": [
+    { "partition": "Disk/active",  "usedMb": 15765, "totalMb": 19297, "percent": 83 },
+    { "partition": "Disk/logging", "usedMb": 24616, "totalMb": 67176, "percent": 39 }
+  ],
+  "uptime": "12:29"
+}
+```
+
+</details>
+
+<details><summary>Tool call: <code>show_network_cluster</code> — topology + replication</summary>
+
+```json
+{ "host": "192.168.125.10" }
+```
+
+```json
 {
   "nodes": [
     {
-      "id": "",
       "hostname": "cucm15-cluster1",
       "ipAddress": "192.168.125.10",
       "type": "Publisher",
@@ -675,13 +413,55 @@ Session 087b08be-1585-11f1-8000-000c2917beb2 closed
 }
 ```
 
-### Auto-Paginate All Devices (RIS)
+</details>
 
-For clusters with >1000 phones, `select_cm_device_all` automatically iterates StateInfo pages:
+<details><summary>Tool call: <code>get_service_status</code> — 81 services</summary>
 
+```json
+{ "host": "192.168.125.10" }
 ```
-→ select_cm_device_all({ host: "192.168.125.10" })
 
+```json
+[
+  { "serviceName": "Cisco CallManager",        "serviceStatus": "Started" },
+  { "serviceName": "Cisco CTIManager",         "serviceStatus": "Started" },
+  { "serviceName": "Cisco Tftp",               "serviceStatus": "Started" },
+  { "serviceName": "Cisco AXL Web Service",    "serviceStatus": "Started" },
+  { "serviceName": "Cisco RIS Data Collector", "serviceStatus": "Started" },
+  { "serviceName": "Cisco CDR Agent",          "serviceStatus": "Started" },
+  "... 75 more services ..."
+]
+```
+
+</details>
+
+> **Assistant:** Cluster looks healthy:
+>
+> - **Node:** cucm15-cluster1 (Publisher, replication authenticated)
+> - **CPU:** 49.75% — moderate load
+> - **Memory:** 7,173 / 11,718 MB (61% used)
+> - **Disk:** Active partition at 83% — keep an eye on this. Logging at 39%, plenty of room.
+> - **Services:** 65 of 81 started — the 16 stopped are all "Not Activated" (Bulk Provisioning, DHCP, etc.), which is normal for a lab.
+> - **Uptime:** 12 hours 29 minutes
+
+---
+
+### "Are all my phones registered?"
+
+> **User:** Show me which phones are registered.
+
+<details><summary>Tool call: <code>select_cm_device</code> — RIS real-time query</summary>
+
+```json
+{
+  "host": "192.168.125.10",
+  "deviceClass": "Phone",
+  "status": "Any",
+  "selectItems": ["*"]
+}
+```
+
+```json
 {
   "totalDevicesFound": 3,
   "cmNodes": [
@@ -689,121 +469,131 @@ For clusters with >1000 phones, `select_cm_device_all` automatically iterates St
       "name": "cucm15-cluster1",
       "returnCode": "Ok",
       "devices": [
-        { "name": "SEP0022905C7710", "ipAddress": "192.168.125.178", "status": "Registered", "protocol": "SCCP" },
-        { "name": "SEP505C885DF37F", "ipAddress": "192.168.125.234", "status": "Registered", "protocol": "SIP"  },
-        { "name": "SEP000832C78E0F", "ipAddress": "192.168.125.85",  "status": "Registered", "protocol": "SIP"  }
+        {
+          "name": "SEP000832C78E0F",
+          "ipAddress": "192.168.125.85",
+          "description": "Auto 1001",
+          "dirNumber": "1001",
+          "status": "Registered",
+          "protocol": "SIP",
+          "activeLoadId": "sip78xx.14-3-1-0001-60"
+        },
+        {
+          "name": "SEP0022905C7710",
+          "ipAddress": "192.168.125.178",
+          "description": "Auto 1000 7975 Phone3",
+          "dirNumber": "1000",
+          "status": "Registered",
+          "protocol": "SCCP",
+          "activeLoadId": "SCCP75.9-4-2SR4-3S"
+        },
+        {
+          "name": "SEP505C885DF37F",
+          "ipAddress": "192.168.125.234",
+          "description": "Auto 1003 9841",
+          "dirNumber": "1003",
+          "status": "Registered",
+          "protocol": "SIP",
+          "activeLoadId": "PHONEOS.3-2-1-0003-28"
+        }
       ]
     }
   ]
 }
 ```
 
-### PerfMon Remove Counter
+</details>
 
-Remove specific counters from a session without closing it:
+> **Assistant:** All 3 phones are **Registered** on cucm15-cluster1:
+>
+> | Phone | DN | IP | Protocol | Firmware |
+> |-------|----|----|----------|----------|
+> | SEP000832C78E0F (7821) | 1001 | 192.168.125.85 | SIP | sip78xx.14-3-1 |
+> | SEP0022905C7710 (7975) | 1000 | 192.168.125.178 | SCCP | SCCP75.9-4-2SR4 |
+> | SEP505C885DF37F (9841) | 1003 | 192.168.125.234 | SIP | PHONEOS.3-2-1 |
+>
+> No unregistered or rejected devices found.
 
+---
+
+### "Check the certificates on CUCM"
+
+> **User:** What TLS certs does CUCM have?
+
+<details><summary>Tool call: <code>cert_list</code> — SSH CLI</summary>
+
+```json
+{ "host": "192.168.125.10", "type": "own" }
 ```
-→ perfmon_remove_counter({
-    host: "192.168.125.10",
-    sessionHandle: "963603f4-15b0-11f1-8000-000c2917beb2",
-    counters: ["\\\\192.168.125.10\\Cisco CallManager\\CallsActive"]
-  })
 
-Removed 1 counter(s) from session 963603f4-15b0-11f1-8000-000c2917beb2
+```json
+[
+  { "unit": "tomcat",            "name": "tomcat",            "issuer": "Self-signed" },
+  { "unit": "tomcat-ECDSA",     "name": "tomcat-ECDSA",     "issuer": "Self-signed" },
+  { "unit": "ipsec",            "name": "ipsec",            "issuer": "Self-signed" },
+  { "unit": "ITLRecovery",      "name": "ITLRecovery",      "issuer": "Self-signed" },
+  { "unit": "CallManager-ECDSA","name": "CallManager-ECDSA","issuer": "Self-signed" },
+  { "unit": "CallManager",      "name": "CallManager",      "issuer": "Self-signed" },
+  { "unit": "CAPF",             "name": "CAPF",             "issuer": "Self-signed" },
+  { "unit": "TVS",              "name": "TVS",              "issuer": "Self-signed" }
+]
 ```
 
-### SDL Trace Analysis (Local)
+</details>
 
-**1. Download an SDL trace:**
+> **Assistant:** CUCM has **8 identity certificates**, all self-signed:
+>
+> - **tomcat** / **tomcat-ECDSA** — Web admin UI
+> - **CallManager** / **CallManager-ECDSA** — SIP TLS, phone signaling
+> - **ipsec** — DRF backup encryption, IPSec tunnels
+> - **ITLRecovery** — Initial Trust List recovery
+> - **CAPF** — Certificate Authority Proxy Function (phone certs)
+> - **TVS** — Trust Verification Service
+>
+> All are self-signed, which is typical for a lab. For production you'd want CA-signed certs on at least tomcat and CallManager.
 
-```
-→ download_file({
-    host: "192.168.125.10",
-    filePath: "/var/log/active/cm/trace/ccm/sdl/SDL001_100_000448.txt.gz"
-  })
+---
 
+### "Debug a call routing issue"
+
+> **User:** A call from 1000 to 1001 isn't connecting. Can you capture what's happening?
+
+The LLM chains multiple tools — starting a packet capture, then analyzing the SIP flow:
+
+<details><summary>Tool call: <code>packet_capture_start</code> — filter SIP port 5060</summary>
+
+```json
 {
-  "savedPath": "/tmp/cucm-mcp/SDL001_100_000448.txt.gz",
-  "bytes": 1049171
+  "host": "192.168.125.10",
+  "portFilter": 5060,
+  "count": 5000
 }
 ```
 
-**2. Parse into structured signals (.gz auto-decompressed):**
-
-```
-→ sdl_trace_parse({ filePath: "/tmp/cucm-mcp/SDL001_100_000448.txt.gz" })
-
-{
-  "totalLines": 47896,
-  "parsedSignals": 17410,
-  "unparsedLines": 30393,
-  "callFlows": [
-    { "callId": "0", "signals": [ ... ] }
-  ],
-  "signalSummary": {
-    "CtiGetDeviceAndLineInfoReq": 3090,
-    "CtiExistingCallEventReq": 3322,
-    "DbObjectCacheTimer": 2308,
-    "SIPRegisterInd": 82,
-    "StationRegister": 10,
-    ...
-  }
-}
-```
-
-**3. Drill into a specific call flow:**
-
-```
-→ sdl_trace_call_flow({
-    filePath: "/tmp/cucm-mcp/SDL001_100_000448.txt.gz",
-    callId: "0"
-  })
-
-{
-  "callId": "0",
-  "signals": [
-    {
-      "timestamp": "14:58:59.390",
-      "signalName": "StationUserToDeviceData",
-      "state": "restart0",
-      "from": "StationD(1,100,199,1)",
-      "to": "StationD(1,100,199,1)",
-      "tag": "...SEP0022905C7710 | CI=0..."
-    },
-    ...
-  ]
-}
-```
-
-### Packet Capture Workflow (End-to-End)
-
-**1. Start capture with SIP filter:**
-
-```
-→ packet_capture_start({
-    host: "192.168.125.10",
-    portFilter: 5060,
-    count: 5000
-  })
-
+```json
 {
   "captureId": "c2439a09-b082-4c91-ba1e-20b211f1a217",
   "status": "running",
-  "fileBase": "packets",
-  "startedAt": "2026-02-28T08:25:44.000Z"
+  "startedAt": "2026-03-11T18:25:44.000Z"
 }
 ```
 
-**2. Reproduce the issue** (place a test call, trigger the problem, etc.)
+</details>
 
-**3. Stop and download:**
+> **Assistant:** Capture is running. Go ahead and place the call from 1000 to 1001 now — I'll stop and analyze when you're ready.
 
+> **User:** Ok, call is done.
+
+<details><summary>Tool call: <code>packet_capture_stop_and_download</code></summary>
+
+```json
+{
+  "host": "192.168.125.10",
+  "captureId": "c2439a09-b082-4c91-ba1e-20b211f1a217"
+}
 ```
-→ packet_capture_stop_and_download({
-    host: "192.168.125.10",
-    captureId: "c2439a09-b082-4c91-ba1e-20b211f1a217"
-  })
 
+```json
 {
   "localPath": "/tmp/cucm-mcp/readme-demo.cap",
   "fileSize": 10532,
@@ -811,28 +601,15 @@ Removed 1 counter(s) from session 963603f4-15b0-11f1-8000-000c2917beb2
 }
 ```
 
-**4. Triage — what's in the capture?**
+</details>
 
-```
-→ pcap_call_summary({ filePath: "/tmp/cucm-mcp/readme-demo.cap" })
+<details><summary>Tool call: <code>pcap_sip_calls</code> — SIP call ladder</summary>
 
-{
-  "totalPackets": 20,
-  "protocols": ["SIP", "SDP"],
-  "sipCalls": 2,
-  "rtpStreams": 1,
-  "endpoints": [
-    { "ip": "192.168.125.10", "packets": 10 },
-    { "ip": "192.168.125.85", "packets": 10 }
-  ]
-}
+```json
+{ "filePath": "/tmp/cucm-mcp/readme-demo.cap" }
 ```
 
-**5. SIP call flow detail:**
-
-```
-→ pcap_sip_calls({ filePath: "/tmp/cucm-mcp/readme-demo.cap" })
-
+```json
 {
   "calls": [
     {
@@ -840,27 +617,30 @@ Removed 1 counter(s) from session 963603f4-15b0-11f1-8000-000c2917beb2
       "from": "\"1000\" <sip:1000@192.168.125.10>",
       "to": "<sip:1001@192.168.125.10>",
       "messages": [
-        { "method": "INVITE",      "status": null,          "timestamp": "08:25:56.742" },
-        { "method": null,          "status": "100 Trying",  "timestamp": "08:25:56.743" },
-        { "method": null,          "status": "180 Ringing", "timestamp": "08:25:56.754" },
-        { "method": null,          "status": "200 OK",      "timestamp": "08:25:57.899" },
-        { "method": "ACK",         "status": null,          "timestamp": "08:25:57.901" },
-        { "method": "BYE",         "status": null,          "timestamp": "08:26:12.555" },
-        { "method": null,          "status": "200 OK",      "timestamp": "08:26:12.556" }
+        { "method": "INVITE",  "timestamp": "18:25:56.742" },
+        { "status": "100 Trying",  "timestamp": "18:25:56.743" },
+        { "status": "180 Ringing", "timestamp": "18:25:56.754" },
+        { "status": "200 OK",      "timestamp": "18:25:57.899" },
+        { "method": "ACK",         "timestamp": "18:25:57.901" },
+        { "method": "BYE",         "timestamp": "18:26:12.555" },
+        { "status": "200 OK",      "timestamp": "18:26:12.556" }
       ],
       "setupTime": "1157 ms",
-      "codec": "PCMU (G.711 u-law)",
-      "sdpMedia": "audio 29390 RTP/AVP 0"
+      "codec": "PCMU (G.711 u-law)"
     }
   ]
 }
 ```
 
-**6. RTP audio quality:**
+</details>
 
+<details><summary>Tool call: <code>pcap_rtp_streams</code> — audio quality</summary>
+
+```json
+{ "filePath": "/tmp/cucm-mcp/readme-demo.cap" }
 ```
-→ pcap_rtp_streams({ filePath: "/tmp/cucm-mcp/readme-demo.cap" })
 
+```json
 {
   "streams": [
     {
@@ -876,6 +656,122 @@ Removed 1 counter(s) from session 963603f4-15b0-11f1-8000-000c2917beb2
   ]
 }
 ```
+
+</details>
+
+> **Assistant:** The call actually completed successfully:
+>
+> - **INVITE → 100 → 180 → 200 OK → ACK** — clean setup in 1,157ms
+> - **BYE → 200 OK** — clean teardown after ~15 seconds
+> - **RTP:** 748 packets, **0% loss**, **0ms jitter** — perfect audio quality
+> - **Codec:** G.711 u-law (PCMU)
+>
+> The SIP flow looks textbook. If the issue is intermittent, I'd suggest enabling Detailed trace level on Cisco CallManager and reproducing again — we can then pull the SDL traces for deeper analysis.
+
+---
+
+### "Pull recent CallManager traces"
+
+> **User:** Get me the last hour of CallManager logs.
+
+<details><summary>Tool call: <code>select_logs_minutes</code></summary>
+
+```json
+{
+  "host": "192.168.125.10",
+  "serviceLogs": ["Cisco CallManager"],
+  "minutesBack": 60
+}
+```
+
+```json
+{
+  "fromDate": "03/11/26 5:10 PM",
+  "toDate": "03/11/26 6:10 PM",
+  "files": [
+    {
+      "absolutePath": "/var/log/active/cm/trace/ccm/sdl/SDL001_100_000448.txt.gz",
+      "name": "SDL001_100_000448.txt.gz",
+      "filesize": 1049171,
+      "modifiedDate": "Tue Mar 11 17:05:28 PDT 2026"
+    }
+  ]
+}
+```
+
+</details>
+
+<details><summary>Tool call: <code>download_file</code> → <code>sdl_trace_parse</code> (chained)</summary>
+
+```json
+{
+  "savedPath": "/tmp/cucm-mcp/SDL001_100_000448.txt.gz",
+  "bytes": 1049171
+}
+```
+
+```json
+{
+  "totalLines": 47896,
+  "parsedSignals": 17410,
+  "signalSummary": {
+    "CtiGetDeviceAndLineInfoReq": 3090,
+    "CtiExistingCallEventReq": 3322,
+    "SIPRegisterInd": 82,
+    "StationRegister": 10
+  }
+}
+```
+
+</details>
+
+> **Assistant:** Downloaded and parsed the SDL trace — **17,410 signals** across 47,896 lines. Key activity:
+>
+> - **CTI events** dominate (3,322 existing call events + 3,090 device info requests) — typical for a monitored cluster
+> - **SIP registrations:** 82 re-registration events
+> - **Station registrations:** 10 (likely phone reboots or config changes)
+>
+> Want me to drill into a specific call ID or look for error signals?
+
+---
+
+### "What AXL operations can I use for phones?"
+
+> **User:** What can I do with phones through AXL?
+
+<details><summary>Tool call: <code>axl_list_operations</code> (via <code>axl_execute</code>)</summary>
+
+```json
+{
+  "operation": "listPhone",
+  "data": {
+    "searchCriteria": { "name": "SEP%" },
+    "returnedTags": { "name": "", "model": "", "description": "" }
+  }
+}
+```
+
+```json
+{
+  "phone": [
+    { "name": "SEP0022905C7710", "model": "Cisco 7975",  "description": "Auto 1000 7975 Phone3" },
+    { "name": "SEP000832C78E0F", "model": "Cisco 7821",  "description": "Auto 1001" },
+    { "name": "SEP505C885DF37F", "model": "Cisco 9841",  "description": "Auto 1003 9841" }
+  ]
+}
+```
+
+</details>
+
+> **Assistant:** Your cluster has 3 phones configured in AXL:
+>
+> | Device | Model | Description |
+> |--------|-------|-------------|
+> | SEP0022905C7710 | Cisco 7975 | Auto 1000 7975 Phone3 |
+> | SEP000832C78E0F | Cisco 7821 | Auto 1001 |
+> | SEP505C885DF37F | Cisco 9841 | Auto 1003 9841 |
+>
+> Via `axl_execute` you can run any AXL operation — `getPhone`, `updatePhone`, `addPhone`, `removePhone`, `listPhone`. Use `axl_describe_operation` to see required fields for any operation.
 
 ## What Tool Do I Use?
 
