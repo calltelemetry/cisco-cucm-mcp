@@ -39,6 +39,13 @@ import { getTraceConfig, setTraceLevel, TRACE_LEVELS } from "./trace-config.js";
 import { listAxlOperations, describeAxlOperation } from "./axl-wsdl.js";
 import { setupPermissiveTls } from "./tls.js";
 import { formatUnknownError } from "./errors.js";
+import {
+  coordinatedCaptureStart,
+  coordinatedCaptureStopAnalyze,
+  phoneCaptureDownload,
+  coordCaptures,
+  type CoordCaptureAuth,
+} from "./coordinated-capture.js";
 
 setupPermissiveTls();
 
@@ -1950,6 +1957,120 @@ server.tool(
         timeoutMs,
       });
       const summary = `${result.ipAddress}/${result.ipMask} | GW: ${result.gateway} | DNS: ${result.dnsPrimary} | ${result.speed} ${result.duplex}`;
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Coordinated dual-perspective call capture tools
+// ---------------------------------------------------------------------------
+
+/** Auth schema for coordinated capture: SSH, AXL, and DIME credentials unified */
+const coordAuthSchema = z
+  .object({
+    sshUser: z.string().optional(),
+    sshPassword: z.string().optional(),
+    axlUser: z.string().optional(),
+    axlPassword: z.string().optional(),
+    dimeUser: z.string().optional(),
+    dimePassword: z.string().optional(),
+  })
+  .optional()
+  .describe(
+    "Auth credentials. If axlUser/axlPassword are omitted, sshUser/sshPassword are used for AXL too. If dimeUser/dimePassword are omitted, sshUser/sshPassword are used for DIME."
+  );
+
+server.tool(
+  "coordinated_capture_start",
+  "Start a coordinated dual-perspective call capture: simultaneously begins a CUCM SSH packet capture (eth0, filtered to the phone's IP) AND enables Embedded Packet Capture (EPC) on the phone via AXL. Returns a coordId and session info. After starting, make a test call, then call coordinated_capture_stop_analyze to stop both, download both .cap files, and get a cross-correlated RTP/loss analysis.",
+  {
+    host: z.string().describe("CUCM IP or hostname"),
+    auth: coordAuthSchema,
+    deviceName: z.string().describe("Phone device name, e.g. SEP505C885DF37F"),
+    fileBase: z.string().optional().describe("Base name for CUCM capture file (default: cap_<deviceName>_<timestamp>)"),
+    phoneCaptureDurationSeconds: z.number().int().min(10).max(3600).optional().describe("How long the phone EPC runs in seconds (default: 60)"),
+    dimePort: z.number().int().min(1).max(65535).optional().describe("DIME port (default: 8443)"),
+    axlPort: z.number().int().min(1).max(65535).optional(),
+    risPort: z.number().int().min(1).max(65535).optional(),
+    sshPort: z.number().int().min(1).max(65535).optional(),
+    portFilter: z.number().int().optional().describe("Optional packet capture port filter"),
+    maxDurationMs: z.number().int().optional().describe("Max CUCM capture duration ms (default: 300000)"),
+    startTimeoutMs: z.number().int().optional(),
+  },
+  WRITE_SAFE,
+  async (args) => {
+    try {
+      const session = await coordinatedCaptureStart({
+        ...args,
+        auth: args.auth as CoordCaptureAuth | undefined,
+      });
+      const summary = `Coordinated capture started | coordId: ${session.coordId} | phone: ${session.deviceName} @ ${session.phoneIp} | cucmCaptureId: ${session.cucmCaptureId}`;
+      return { content: [{ type: "text", text: `${summary}\n\nNow make a test call. Then call coordinated_capture_stop_analyze with the coordId.\n\n${JSON.stringify(session, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "coordinated_capture_stop_analyze",
+  "Stop a coordinated call capture (started with coordinated_capture_start), download both the CUCM SSH capture and the phone EPC capture, run tshark analysis on each, and cross-correlate RTP streams to diagnose where packet loss or jitter is occurring (last-mile between CUCM and phone, vs upstream before CUCM).",
+  {
+    coordId: z.string().optional().describe("coordId from coordinated_capture_start (optional if providing cucmCaptureId directly)"),
+    cucmCaptureId: z.string().optional().describe("CUCM capture session ID (from coordinated_capture_start cucmCaptureId field)"),
+    host: z.string().optional().describe("CUCM IP (required if not derivable from state)"),
+    deviceName: z.string().optional().describe("Phone device name (e.g. SEP505C885DF37F)"),
+    phoneIp: z.string().optional().describe("Phone IP address (used to scope analysis)"),
+    phoneCaptureFileCandidates: z.array(z.string()).optional().describe("Override TFTP candidate paths for phone EPC file"),
+    dimePort: z.number().int().min(1).max(65535).optional(),
+    auth: coordAuthSchema,
+    stopTimeoutMs: z.number().int().optional(),
+    downloadTimeoutMs: z.number().int().optional(),
+    downloadPollIntervalMs: z.number().int().optional(),
+  },
+  WRITE_SAFE,
+  async (args) => {
+    try {
+      const analysis = await coordinatedCaptureStopAnalyze(
+        { ...args, auth: args.auth as CoordCaptureAuth | undefined },
+        captureState
+      );
+      const c = analysis.correlation;
+      const summary = [
+        `Coordinated capture analysis complete | ${analysis.deviceName} @ ${analysis.phoneIp}`,
+        `CUCM capture: ${analysis.cucm.bytes} bytes | Phone capture: ${analysis.phone.available ? `${analysis.phone.bytes} bytes` : "NOT AVAILABLE"}`,
+        `RTP coverage: ${c.rtpCoverage} | Common SSRCs: ${c.commonRtpSsrcs.length}`,
+        `Verdict: ${c.verdict}`,
+      ].join("\n");
+      return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(analysis, null, 2)}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
+    }
+  }
+);
+
+server.tool(
+  "phone_capture_download",
+  "Standalone tool to download a phone's Embedded Packet Capture (EPC) file from CUCM's TFTP directory. Tries multiple candidate paths (CUCM version dependent). Use after a phone EPC session has been manually enabled or after coordinated_capture_start without a paired stop.",
+  {
+    host: z.string().describe("CUCM IP or hostname"),
+    deviceName: z.string().describe("Phone device name, e.g. SEP505C885DF37F"),
+    dimePort: z.number().int().min(1).max(65535).optional().describe("DIME port (default: 8443)"),
+    auth: coordAuthSchema,
+    outFile: z.string().optional().describe("Override output file path (default: /tmp/cucm-mcp/<DEVICE>_epc_<ts>.cap)"),
+    downloadTimeoutMs: z.number().int().optional(),
+  },
+  WRITE_SAFE,
+  async (args) => {
+    try {
+      const result = await phoneCaptureDownload({
+        ...args,
+        auth: args.auth as CoordCaptureAuth | undefined,
+      });
+      const summary = `Phone EPC downloaded: ${result.savedPath} (${result.bytes} bytes) | Found at: ${result.foundAt}`;
       return { content: [{ type: "text", text: `${summary}\n\n${JSON.stringify(result, null, 2)}` }] };
     } catch (e) {
       return { content: [{ type: "text", text: JSON.stringify({ error: true, message: formatUnknownError(e) }, null, 2) }] };
