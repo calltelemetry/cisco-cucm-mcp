@@ -111,19 +111,18 @@ export function normalizeHost(hostOrUrl: string): string {
 }
 
 export function resolveAxlAuth(auth?: AxlAuth): Required<AxlAuth> {
-  const username = auth?.username || process.env.CUCM_AXL_USERNAME || process.env.CUCM_USERNAME || process.env.CUCM_DIME_USERNAME;
-  const password = auth?.password || process.env.CUCM_AXL_PASSWORD || process.env.CUCM_PASSWORD || process.env.CUCM_DIME_PASSWORD;
+  const username = auth?.username || process.env.CUCM_USERNAME;
+  const password = auth?.password || process.env.CUCM_PASSWORD;
   if (!username || !password) {
-    throw new Error("Missing AXL credentials (provide auth or set CUCM_AXL_USERNAME/CUCM_AXL_PASSWORD)");
+    throw new Error("Missing AXL credentials (provide auth or set CUCM_USERNAME/CUCM_PASSWORD)");
   }
   return { username, password };
 }
 
 export function resolveAxlTarget(hostOrUrl: string, port?: number, version?: string): AxlTarget {
   const host = normalizeHost(hostOrUrl);
-  const envPort = process.env.CUCM_AXL_PORT ? Number.parseInt(process.env.CUCM_AXL_PORT, 10) : undefined;
-  const resolvedPort = port ?? envPort ?? 8443;
-  const resolvedVersion = version || process.env.CUCM_AXL_VERSION || "15.0";
+  const resolvedPort = port ?? 8443;
+  const resolvedVersion = version || process.env.CUCM_VERSION || "15.0";
   return { host, port: resolvedPort, version: resolvedVersion };
 }
 

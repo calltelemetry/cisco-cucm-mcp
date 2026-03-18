@@ -5,15 +5,15 @@ describe('axl', () => {
   const savedEnv = { user: '', pass: '' };
 
   beforeEach(() => {
-    savedEnv.user = process.env.CUCM_AXL_USERNAME ?? '';
-    savedEnv.pass = process.env.CUCM_AXL_PASSWORD ?? '';
-    process.env.CUCM_AXL_USERNAME = 'u';
-    process.env.CUCM_AXL_PASSWORD = 'p';
+    savedEnv.user = process.env.CUCM_USERNAME ?? '';
+    savedEnv.pass = process.env.CUCM_PASSWORD ?? '';
+    process.env.CUCM_USERNAME = 'u';
+    process.env.CUCM_PASSWORD = 'p';
   });
 
   afterEach(() => {
-    process.env.CUCM_AXL_USERNAME = savedEnv.user;
-    process.env.CUCM_AXL_PASSWORD = savedEnv.pass;
+    process.env.CUCM_USERNAME = savedEnv.user;
+    process.env.CUCM_PASSWORD = savedEnv.pass;
   });
 
   it('updatePhonePacketCapture parses return', async () => {

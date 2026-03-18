@@ -6,15 +6,15 @@ describe('dime', () => {
   const savedEnv = { user: '', pass: '' };
 
   beforeEach(() => {
-    savedEnv.user = process.env.CUCM_DIME_USERNAME ?? '';
-    savedEnv.pass = process.env.CUCM_DIME_PASSWORD ?? '';
-    process.env.CUCM_DIME_USERNAME = 'u';
-    process.env.CUCM_DIME_PASSWORD = 'p';
+    savedEnv.user = process.env.CUCM_USERNAME ?? '';
+    savedEnv.pass = process.env.CUCM_PASSWORD ?? '';
+    process.env.CUCM_USERNAME = 'u';
+    process.env.CUCM_PASSWORD = 'p';
   });
 
   afterEach(() => {
-    process.env.CUCM_DIME_USERNAME = savedEnv.user;
-    process.env.CUCM_DIME_PASSWORD = savedEnv.pass;
+    process.env.CUCM_USERNAME = savedEnv.user;
+    process.env.CUCM_PASSWORD = savedEnv.pass;
   });
 
   it('listNodeServiceLogs parses multi-node response', async () => {
@@ -185,19 +185,19 @@ describe('selectLogsCluster', () => {
   const savedEnv: Record<string, string> = {};
 
   beforeEach(() => {
-    savedEnv.user = process.env.CUCM_DIME_USERNAME ?? '';
-    savedEnv.pass = process.env.CUCM_DIME_PASSWORD ?? '';
+    savedEnv.user = process.env.CUCM_USERNAME ?? '';
+    savedEnv.pass = process.env.CUCM_PASSWORD ?? '';
     savedEnv.sshUser = process.env.CUCM_SSH_USERNAME ?? '';
     savedEnv.sshPass = process.env.CUCM_SSH_PASSWORD ?? '';
-    process.env.CUCM_DIME_USERNAME = 'u';
-    process.env.CUCM_DIME_PASSWORD = 'p';
+    process.env.CUCM_USERNAME = 'u';
+    process.env.CUCM_PASSWORD = 'p';
     process.env.CUCM_SSH_USERNAME = 'u';
     process.env.CUCM_SSH_PASSWORD = 'p';
   });
 
   afterEach(() => {
-    process.env.CUCM_DIME_USERNAME = savedEnv.user;
-    process.env.CUCM_DIME_PASSWORD = savedEnv.pass;
+    process.env.CUCM_USERNAME = savedEnv.user;
+    process.env.CUCM_PASSWORD = savedEnv.pass;
     process.env.CUCM_SSH_USERNAME = savedEnv.sshUser;
     process.env.CUCM_SSH_PASSWORD = savedEnv.sshPass;
     vi.restoreAllMocks();

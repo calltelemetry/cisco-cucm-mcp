@@ -8,9 +8,9 @@ const sshHost = process.env.CUCM_SSH_HOST;
 const sshUser = process.env.CUCM_SSH_USERNAME;
 const sshPass = process.env.CUCM_SSH_PASSWORD;
 
-const dimeHost = process.env.CUCM_DIME_HOST || process.env.CUCM_HOST;
-const dimeUser = process.env.CUCM_DIME_USERNAME;
-const dimePass = process.env.CUCM_DIME_PASSWORD;
+const dimeHost = process.env.CUCM_HOST;
+const dimeUser = process.env.CUCM_USERNAME;
+const dimePass = process.env.CUCM_PASSWORD;
 
 const hasLiveCreds = Boolean(sshHost && sshUser && sshPass && dimeHost && dimeUser && dimePass);
 

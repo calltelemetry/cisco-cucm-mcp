@@ -186,8 +186,8 @@ server.tool(
   {
     host: z.string().describe("CUCM host/IP"),
     port: z.number().int().min(1).max(65535).optional().describe("AXL port (default 8443)"),
-    axlVersion: z.string().optional().describe("AXL API version (default env CUCM_AXL_VERSION or 15.0)"),
-    auth: axlAuthSchema.describe("AXL auth (optional; defaults to CUCM_AXL_USERNAME/CUCM_AXL_PASSWORD)"),
+    axlVersion: z.string().optional().describe("AXL API version (default env CUCM_VERSION or 15.0)"),
+    auth: axlAuthSchema.describe("AXL auth (optional; defaults to CUCM_USERNAME/CUCM_PASSWORD)"),
     deviceName: z.string().min(1).describe("Phone device name (e.g. SEP505C885DF37F)"),
     mode: z
       .string()
@@ -265,8 +265,8 @@ server.tool(
     cucm_host: z.string().describe("CUCM host/IP"),
     cucm_port: z.number().int().min(1).max(65535).optional().describe("AXL port (default 8443)"),
     cucm_version: z.string().optional().describe("AXL API version (e.g. 15.0)"),
-    cucm_username: z.string().optional().describe("AXL username (optional if env CUCM_AXL_USERNAME is set)"),
-    cucm_password: z.string().optional().describe("AXL password (optional if env CUCM_AXL_PASSWORD is set)"),
+    cucm_username: z.string().optional().describe("AXL username (optional if env CUCM_USERNAME is set)"),
+    cucm_password: z.string().optional().describe("AXL password (optional if env CUCM_PASSWORD is set)"),
 
     timeoutMs: z.number().int().min(1000).max(5 * 60_000).optional().describe("AXL request timeout"),
     includeRequestXml: z.boolean().optional().describe("Include SOAP request XML in response (debug)"),
@@ -401,15 +401,15 @@ server.tool(
   {
     cucm_host: z.string().describe("CUCM host/IP"),
     cucm_port: z.number().int().min(1).max(65535).optional().describe("AXL port (default 8443)"),
-    cucm_username: z.string().optional().describe("AXL username (optional if env CUCM_AXL_USERNAME is set)"),
-    cucm_password: z.string().optional().describe("AXL password (optional if env CUCM_AXL_PASSWORD is set)"),
+    cucm_username: z.string().optional().describe("AXL username (optional if env CUCM_USERNAME is set)"),
+    cucm_password: z.string().optional().describe("AXL password (optional if env CUCM_PASSWORD is set)"),
     outFile: z.string().optional().describe("Optional output file path (default /tmp/cucm-mcp/axl.wsdl)")
   },
   READ_ONLY_NETWORK,
   async ({ cucm_host, cucm_port, cucm_username, cucm_password, outFile }) => {
     const port = cucm_port ?? 8443;
-    const user = cucm_username || process.env.CUCM_AXL_USERNAME || process.env.CUCM_USERNAME;
-    const pass = cucm_password || process.env.CUCM_AXL_PASSWORD || process.env.CUCM_PASSWORD;
+    const user = cucm_username || process.env.CUCM_USERNAME;
+    const pass = cucm_password || process.env.CUCM_PASSWORD;
     if (!user || !pass) {
       return {
         content: [
@@ -419,7 +419,7 @@ server.tool(
               {
                 ok: false,
                 error: true,
-                message: "Missing AXL credentials (provide cucm_username/cucm_password or set CUCM_AXL_USERNAME/CUCM_AXL_PASSWORD)",
+                message: "Missing AXL credentials (provide cucm_username/cucm_password or set CUCM_USERNAME/CUCM_PASSWORD)",
               },
               null,
               2
@@ -897,7 +897,7 @@ server.tool(
   {
     captureId: z.string().min(1),
     dimePort: z.number().int().min(1).max(65535).optional(),
-    auth: dimeAuthSchema.describe("DIME auth (optional; defaults to CUCM_DIME_USERNAME/CUCM_DIME_PASSWORD)"),
+    auth: dimeAuthSchema.describe("DIME auth (optional; defaults to CUCM_USERNAME/CUCM_PASSWORD)"),
     outFile: z.string().optional().describe("Optional output path for the downloaded .cap file"),
     stopTimeoutMs: z
       .number()
@@ -987,7 +987,7 @@ server.tool(
   {
     captureId: z.string().min(1),
     dimePort: z.number().int().min(1).max(65535).optional(),
-    auth: dimeAuthSchema.describe("DIME auth (optional; defaults to CUCM_DIME_USERNAME/CUCM_DIME_PASSWORD)"),
+    auth: dimeAuthSchema.describe("DIME auth (optional; defaults to CUCM_USERNAME/CUCM_PASSWORD)"),
     outFile: z.string().optional().describe("Optional output path for the downloaded .cap file"),
     downloadTimeoutMs: z
       .number()
@@ -1812,8 +1812,8 @@ server.tool(
   async ({ host, port, auth }) => {
     try {
       const resolvedAuth = {
-        username: auth?.username || process.env.CUCM_AXL_USERNAME || process.env.CUCM_USERNAME || process.env.CUCM_DIME_USERNAME || "",
-        password: auth?.password || process.env.CUCM_AXL_PASSWORD || process.env.CUCM_PASSWORD || process.env.CUCM_DIME_PASSWORD || "",
+        username: auth?.username || process.env.CUCM_USERNAME || "",
+        password: auth?.password || process.env.CUCM_PASSWORD || "",
       };
       if (!resolvedAuth.username || !resolvedAuth.password) throw new Error("Missing AXL credentials");
       const result = await listAxlOperations(host, resolvedAuth, port);
@@ -1838,8 +1838,8 @@ server.tool(
   async ({ host, port, auth, operation }) => {
     try {
       const resolvedAuth = {
-        username: auth?.username || process.env.CUCM_AXL_USERNAME || process.env.CUCM_USERNAME || process.env.CUCM_DIME_USERNAME || "",
-        password: auth?.password || process.env.CUCM_AXL_PASSWORD || process.env.CUCM_PASSWORD || process.env.CUCM_DIME_PASSWORD || "",
+        username: auth?.username || process.env.CUCM_USERNAME || "",
+        password: auth?.password || process.env.CUCM_PASSWORD || "",
       };
       if (!resolvedAuth.username || !resolvedAuth.password) throw new Error("Missing AXL credentials");
       const result = await describeAxlOperation(host, resolvedAuth, operation, port);

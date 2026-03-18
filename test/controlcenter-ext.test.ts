@@ -5,15 +5,15 @@ describe('controlcenter-ext', () => {
   const savedEnv = { user: '', pass: '' };
 
   beforeEach(() => {
-    savedEnv.user = process.env.CUCM_DIME_USERNAME ?? '';
-    savedEnv.pass = process.env.CUCM_DIME_PASSWORD ?? '';
-    process.env.CUCM_DIME_USERNAME = 'u';
-    process.env.CUCM_DIME_PASSWORD = 'p';
+    savedEnv.user = process.env.CUCM_USERNAME ?? '';
+    savedEnv.pass = process.env.CUCM_PASSWORD ?? '';
+    process.env.CUCM_USERNAME = 'u';
+    process.env.CUCM_PASSWORD = 'p';
   });
 
   afterEach(() => {
-    process.env.CUCM_DIME_USERNAME = savedEnv.user;
-    process.env.CUCM_DIME_PASSWORD = savedEnv.pass;
+    process.env.CUCM_USERNAME = savedEnv.user;
+    process.env.CUCM_PASSWORD = savedEnv.pass;
   });
 
   // soapDoControlServices (regular endpoint) for Start/Stop/Restart

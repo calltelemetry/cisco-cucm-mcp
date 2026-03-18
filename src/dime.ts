@@ -78,18 +78,17 @@ export function normalizeHost(hostOrUrl: string): string {
 }
 
 export function resolveAuth(auth?: DimeAuth): Required<DimeAuth> {
-  const username = auth?.username || process.env.CUCM_DIME_USERNAME || process.env.CUCM_USERNAME;
-  const password = auth?.password || process.env.CUCM_DIME_PASSWORD || process.env.CUCM_PASSWORD;
+  const username = auth?.username || process.env.CUCM_USERNAME;
+  const password = auth?.password || process.env.CUCM_PASSWORD;
   if (!username || !password) {
-    throw new Error("Missing DIME credentials (provide auth or set CUCM_DIME_USERNAME/CUCM_DIME_PASSWORD)");
+    throw new Error("Missing DIME credentials (provide auth or set CUCM_USERNAME/CUCM_PASSWORD)");
   }
   return { username, password };
 }
 
 export function resolveTarget(hostOrUrl: string, port?: number): DimeTarget {
   const host = normalizeHost(hostOrUrl);
-  const envPort = process.env.CUCM_DIME_PORT ? Number.parseInt(process.env.CUCM_DIME_PORT, 10) : undefined;
-  const resolvedPort = port ?? envPort ?? 8443;
+  const resolvedPort = port ?? 8443;
   return { host, port: resolvedPort };
 }
 
@@ -469,8 +468,8 @@ export async function selectLogsCluster(
   const { showNetworkCluster } = await import("./cli-tools.js");
 
   const sshAuth = opts?.sshAuth ?? {
-    username: opts?.auth?.username || process.env.CUCM_SSH_USERNAME || process.env.CUCM_USERNAME || process.env.CUCM_DIME_USERNAME || "",
-    password: opts?.auth?.password || process.env.CUCM_SSH_PASSWORD || process.env.CUCM_PASSWORD || process.env.CUCM_DIME_PASSWORD || "",
+    username: opts?.auth?.username || process.env.CUCM_SSH_USERNAME || process.env.CUCM_USERNAME || "",
+    password: opts?.auth?.password || process.env.CUCM_SSH_PASSWORD || process.env.CUCM_PASSWORD || "",
   };
 
   const cluster = await showNetworkCluster(publisherHost, {

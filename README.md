@@ -102,8 +102,8 @@ Or pass credentials explicitly via the `env` block (not recommended — prefer s
       "command": "npx",
       "args": ["-y", "@calltelemetry/cisco-cucm-mcp@latest"],
       "env": {
-        "CUCM_DIME_USERNAME": "<dime-user>",
-        "CUCM_DIME_PASSWORD": "<dime-pass>",
+        "CUCM_USERNAME": "<cucm-user>",
+        "CUCM_PASSWORD": "<cucm-pass>",
         "CUCM_SSH_USERNAME": "<ssh-user>",
         "CUCM_SSH_PASSWORD": "<ssh-pass>"
       }
@@ -130,14 +130,6 @@ After setup, verify the connection by running:
 | `CUCM_USERNAME` | Shared default username (fallback for DIME, AXL, RIS, PerfMon, ControlCenter) |
 | `CUCM_PASSWORD` | Shared default password |
 
-### DIME (HTTPS on :8443)
-
-| Variable | Description |
-|----------|-------------|
-| `CUCM_DIME_USERNAME` | DIME SOAP username |
-| `CUCM_DIME_PASSWORD` | DIME SOAP password |
-| `CUCM_DIME_PORT` | DIME port (default: `8443`) |
-
 ### SSH (CLI)
 
 | Variable | Description |
@@ -146,12 +138,11 @@ After setup, verify the connection by running:
 | `CUCM_SSH_PASSWORD` | SSH password |
 | `CUCM_SSH_PORT` | SSH port (default: `22`) |
 
-### AXL (Phone Configuration)
+### AXL Version
 
 | Variable | Description |
 |----------|-------------|
-| `CUCM_AXL_USERNAME` | AXL username (falls back to DIME creds) |
-| `CUCM_AXL_PASSWORD` | AXL password (falls back to DIME creds) |
+| `CUCM_VERSION` | AXL API version (default: `15.0`) |
 
 ### TLS
 
@@ -843,8 +834,8 @@ The LLM chains multiple tools — starting a packet capture, then analyzing the 
 
 ```bash
 # In ~/.zshrc
-export CUCM_DIME_USERNAME="your-cucm-admin"
-export CUCM_DIME_PASSWORD="your-password"
+export CUCM_USERNAME="your-cucm-admin"
+export CUCM_PASSWORD="your-password"
 export CUCM_SSH_USERNAME="your-ssh-user"
 export CUCM_SSH_PASSWORD="your-ssh-password"
 ```
@@ -871,18 +862,16 @@ Each API resolves credentials through its own fallback chain:
 
 | API | Fallback Order |
 |-----|---------------|
-| **DIME** | `auth` param → `CUCM_DIME_USERNAME` → `CUCM_USERNAME` |
-| **AXL** | `auth` param → `CUCM_AXL_USERNAME` → `CUCM_USERNAME` → `CUCM_DIME_USERNAME` |
-| **SSH** | `auth` param → `CUCM_SSH_USERNAME` *(no fallback)* |
+| **DIME** | `auth` param → `CUCM_USERNAME` / `CUCM_PASSWORD` |
+| **AXL** | `auth` param → `CUCM_USERNAME` / `CUCM_PASSWORD` |
+| **SSH** | `auth` param → `CUCM_SSH_USERNAME` / `CUCM_SSH_PASSWORD` |
 | **RIS/PerfMon/ControlCenter** | Same as DIME |
 
-Set `CUCM_USERNAME` / `CUCM_PASSWORD` as a shared default, then override per-API only when credentials differ.
-
-CUCM deployments vary — SSH and DIME may accept different credentials:
+Set `CUCM_USERNAME` / `CUCM_PASSWORD` for all CUCM API access (DIME, AXL, RIS, PerfMon, ControlCenter). SSH uses separate `CUCM_SSH_*` env vars since OS-level credentials often differ.
 
 ```bash
-# Verify DIME credentials (WSDL should return HTTP 200)
-curl -k -u "$CUCM_DIME_USERNAME:$CUCM_DIME_PASSWORD" \
+# Verify CUCM credentials (WSDL should return HTTP 200)
+curl -k -u "$CUCM_USERNAME:$CUCM_PASSWORD" \
   "https://<cucm-host>:8443/logcollectionservice2/services/LogCollectionPortTypeService?wsdl" \
   -o /dev/null -w "%{http_code}\n"
 ```
@@ -891,7 +880,7 @@ curl -k -u "$CUCM_DIME_USERNAME:$CUCM_DIME_PASSWORD" \
 
 | Problem | Solution |
 |---------|----------|
-| Auth failures | Verify with `curl -k -u "$CUCM_DIME_USERNAME:$CUCM_DIME_PASSWORD" "https://host:8443/logcollectionservice2/services/LogCollectionPortTypeService?wsdl" -o /dev/null -w "%{http_code}\n"` — should return `200` |
+| Auth failures | Verify with `curl -k -u "$CUCM_USERNAME:$CUCM_PASSWORD" "https://host:8443/logcollectionservice2/services/LogCollectionPortTypeService?wsdl" -o /dev/null -w "%{http_code}\n"` — should return `200` |
 | Rate limiting (HTTP 503) | RIS/PerfMon enforce ~15 req/min. Auto-retry with 5s→10s→20s backoff is built in. |
 | `tshark` not found | pcap analysis tools require Wireshark CLI — `brew install wireshark` (macOS) or `apt install tshark` (Linux) |
 | Self-signed TLS errors | Set `CUCM_MCP_TLS_MODE=permissive` (default) or add CUCM cert to system trust store |
