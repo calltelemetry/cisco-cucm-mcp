@@ -12,15 +12,15 @@
  */
 
 import crypto from "node:crypto";
-import { mkdirSync, existsSync } from "node:fs";
-import { join, basename } from "node:path";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 
 import { PacketCaptureManager, sanitizeFileBase, type PacketCaptureStart, type SshAuth } from "./packetCapture.js";
-import { getOneFileAnyWithRetry, writeDownloadedFile, type DimeAuth, resolveAuth } from "./dime.js";
+import { getOneFileAnyWithRetry, writeDownloadedFile, type DimeAuth } from "./dime.js";
 import { updatePhonePacketCapture, applyPhone, type AxlAuth } from "./axl.js";
 import { selectCmDevice, type RisDevice } from "./risport.js";
 import { pcapCallSummary, pcapScppMessages, pcapRtpStreams, type RtpStream } from "./pcap-analyze.js";
-import { defaultStateStore, type CaptureStateStore } from "./state.js";
+import { type CaptureStateStore } from "./state.js";
 import { formatUnknownError } from "./errors.js";
 
 // ---------------------------------------------------------------------------

@@ -43,13 +43,12 @@ import {
   coordinatedCaptureStart,
   coordinatedCaptureStopAnalyze,
   phoneCaptureDownload,
-  coordCaptures,
   type CoordCaptureAuth,
 } from "./coordinated-capture.js";
 
 setupPermissiveTls();
 
-const server = new McpServer({ name: "cucm", version: "0.7.0" });
+const server = new McpServer({ name: "cucm", version: "0.7.1" });
 const captures = new PacketCaptureManager();
 const captureState = defaultStateStore();
 
