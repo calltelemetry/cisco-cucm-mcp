@@ -161,7 +161,7 @@ async function resolvePhoneIp(
   const dimeAuth = dimeAuthFromCoord(auth);
   const result = await selectCmDevice(
     host,
-    { selectItems: [deviceName], maxDevices: 1 },
+    { selectItems: [deviceName], maxReturnedDevices: 1 },
     dimeAuth,
     port
   );
@@ -465,7 +465,7 @@ export async function coordinatedCaptureStopAnalyze(
     cucmAnalysisError = formatUnknownError(e);
     cucmAnalysis = {
       summary: {},
-      sccpMessages: {},
+      sccpMessages: { messages: [], devices: [], messageTypes: {}, totalMessages: 0 },
       rtpStreams: { streams: [], summary: { totalStreams: 0, worstLoss: "0%", worstJitter: "0ms" } },
     };
   }
