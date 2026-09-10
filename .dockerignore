@@ -1,0 +1,7 @@
+node_modules
+build
+coverage
+.git
+.github
+*.local
+test

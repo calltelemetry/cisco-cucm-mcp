@@ -1,12 +1,15 @@
 import { defineConfig } from 'vite';
+import { resolve } from 'path';
 import { builtinModules } from 'node:module';
 
 export default defineConfig({
   build: {
     lib: {
-      entry: 'src/index.ts',
+      entry: {
+        index: resolve(__dirname, 'src/index.ts'),
+        sse: resolve(__dirname, 'src/sse.ts'),
+      },
       formats: ['es'],
-      fileName: 'index',
     },
     rollupOptions: {
       external: [
@@ -17,6 +20,9 @@ export default defineConfig({
         ...builtinModules,
         ...builtinModules.map(m => `node:${m}`),
       ],
+      output: {
+        entryFileNames: '[name].js',
+      },
     },
     target: 'node18',
     sourcemap: true,

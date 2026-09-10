@@ -1,6 +1,6 @@
 {
   "name": "@calltelemetry/cisco-cucm-mcp",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "type": "module",
   "description": "MCP server for CUCM operational debugging: DIME logs, AXL config, RIS device status, PerfMon counters, service health, packet capture, and pcap analysis",
   "license": "MIT",
@@ -39,8 +39,9 @@
   },
   "packageManager": "yarn@4.12.0",
   "scripts": {
-    "build": "vite build && chmod +x build/index.js",
+    "build": "vite build && chmod +x build/index.js build/sse.js",
     "start": "node build/index.js",
+    "start:sse": "node build/sse.js",
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/ test/ --max-warnings=25",
