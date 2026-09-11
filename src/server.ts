@@ -19,7 +19,7 @@ import {
 import { guessTimezoneString } from "./time.js";
 import { PacketCaptureManager, type SshAuth } from "./packetCapture.js";
 import { defaultStateStore } from "./state.js";
-import { applyPhone, updatePhonePacketCapture, axlExecute, type AxlAuth } from "./axl.js";
+import { applyPhone, updatePhonePacketCapture, axlExecute, SUPPORTED_CUCM_VERSIONS, type AxlAuth } from "./axl.js";
 import { pcapCallSummary, pcapSipCalls, pcapScppMessages, pcapRtpStreams, pcapProtocolFilter } from "./pcap-analyze.js";
 import { selectCmDevice, selectCmDeviceAll, selectCmDeviceByIp, selectCtiItem, type SelectCmDeviceArgs, type SelectCtiItemArgs } from "./risport.js";
 import { perfmonCollectCounterData, perfmonListCounter, perfmonListInstance, perfmonOpenSession, perfmonAddCounter, perfmonRemoveCounter, perfmonCollectSessionData, perfmonCloseSession } from "./perfmon.js";
@@ -44,7 +44,7 @@ import {
 } from "./coordinated-capture.js";
 
 export const SERVER_NAME = "cisco-cucm-mcp";
-export const SERVER_VERSION = "0.8.0";
+export const SERVER_VERSION = "0.9.0";
 
 export function createMcpServer(): McpServer {
   setupPermissiveTls();
@@ -66,6 +66,14 @@ const authSchema = z
 const dimeAuthSchema = authSchema;
 const sshAuthSchema = authSchema;
 const axlAuthSchema = authSchema;
+
+/** CUCM AXL schema version enum schema */
+const cucmVersionSchema = z
+  .enum(SUPPORTED_CUCM_VERSIONS)
+  .optional()
+  .describe(
+    `CUCM AXL schema version (supported: ${SUPPORTED_CUCM_VERSIONS.join(", ")}; defaults to env CUCM_VERSION or 15.0)`
+  );
 
 // Tool annotation presets
 const READ_ONLY_NETWORK: ToolAnnotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
@@ -186,7 +194,8 @@ server.tool(
   {
     host: z.string().describe("CUCM host/IP"),
     port: z.number().int().min(1).max(65535).optional().describe("AXL port (default 8443)"),
-    axlVersion: z.string().optional().describe("AXL API version (default env CUCM_VERSION or 15.0)"),
+    cucm_version: cucmVersionSchema,
+    axlVersion: cucmVersionSchema.describe("Deprecated alias for cucm_version"),
     auth: axlAuthSchema.describe("AXL auth (optional; defaults to CUCM_USERNAME/CUCM_PASSWORD)"),
     deviceName: z.string().min(1).describe("Phone device name (e.g. SEP505C885DF37F)"),
     mode: z
@@ -204,14 +213,15 @@ server.tool(
     timeoutMs: z.number().int().min(1000).max(5 * 60_000).optional().describe("AXL request timeout"),
   },
   WRITE_DESTRUCTIVE,
-  async ({ host, port, axlVersion, auth, deviceName, mode, durationSeconds, apply, timeoutMs }) => {
+  async ({ host, port, cucm_version, axlVersion, auth, deviceName, mode, durationSeconds, apply, timeoutMs }) => {
+    const version = cucm_version || axlVersion;
     const update = await updatePhonePacketCapture(host, {
       deviceName,
       mode: mode || "Batch Processing Mode",
       durationSeconds: durationSeconds ?? 60,
       auth: auth as AxlAuth | undefined,
       port,
-      version: axlVersion,
+      version,
       timeoutMs,
     });
 
@@ -221,7 +231,7 @@ server.tool(
           deviceName,
           auth: auth as AxlAuth | undefined,
           port,
-          version: axlVersion,
+          version,
           timeoutMs,
         })
       : undefined;
@@ -264,7 +274,7 @@ server.tool(
 
     cucm_host: z.string().describe("CUCM host/IP"),
     cucm_port: z.number().int().min(1).max(65535).optional().describe("AXL port (default 8443)"),
-    cucm_version: z.string().optional().describe("AXL API version (e.g. 15.0)"),
+    cucm_version: cucmVersionSchema,
     cucm_username: z.string().optional().describe("AXL username (optional if env CUCM_USERNAME is set)"),
     cucm_password: z.string().optional().describe("AXL password (optional if env CUCM_PASSWORD is set)"),
 
@@ -401,12 +411,13 @@ server.tool(
   {
     cucm_host: z.string().describe("CUCM host/IP"),
     cucm_port: z.number().int().min(1).max(65535).optional().describe("AXL port (default 8443)"),
+    cucm_version: cucmVersionSchema,
     cucm_username: z.string().optional().describe("AXL username (optional if env CUCM_USERNAME is set)"),
     cucm_password: z.string().optional().describe("AXL password (optional if env CUCM_PASSWORD is set)"),
     outFile: z.string().optional().describe("Optional output file path (default /tmp/cucm-mcp/axl.wsdl)")
   },
   READ_ONLY_NETWORK,
-  async ({ cucm_host, cucm_port, cucm_username, cucm_password, outFile }) => {
+  async ({ cucm_host, cucm_port, cucm_version, cucm_username, cucm_password, outFile }) => {
     const port = cucm_port ?? 8443;
     const user = cucm_username || process.env.CUCM_USERNAME;
     const pass = cucm_password || process.env.CUCM_PASSWORD;
@@ -1806,6 +1817,7 @@ server.tool(
   {
     host: z.string().describe("CUCM host/IP"),
     port: z.number().int().min(1).max(65535).optional(),
+    cucm_version: cucmVersionSchema,
     auth: axlAuthSchema,
   },
   READ_ONLY_NETWORK,
@@ -1831,8 +1843,9 @@ server.tool(
   {
     host: z.string().describe("CUCM host/IP"),
     port: z.number().int().min(1).max(65535).optional(),
-    auth: axlAuthSchema,
     operation: z.string().min(1).describe("AXL operation name (e.g. listPhone, getLine, addPhone)"),
+    cucm_version: cucmVersionSchema,
+    auth: axlAuthSchema,
   },
   READ_ONLY_NETWORK,
   async ({ host, port, auth, operation }) => {
