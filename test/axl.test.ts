@@ -98,4 +98,18 @@ describe('axl', () => {
       })
     );
   });
+
+  it('exposes SUPPORTED_CUCM_VERSIONS and validates versions', async () => {
+    const { SUPPORTED_CUCM_VERSIONS, isSupportedCucmVersion, resolveAxlTarget } = await import('../src/axl.js');
+    expect(SUPPORTED_CUCM_VERSIONS).toEqual(['11.0', '11.5', '12.0', '12.5', '14.0', '15.0']);
+    expect(isSupportedCucmVersion('11.5')).toBe(true);
+    expect(isSupportedCucmVersion('14.0')).toBe(true);
+    expect(isSupportedCucmVersion('99.9')).toBe(false);
+
+    const target1 = resolveAxlTarget('cucm.lab.local', 8443, '11.5');
+    expect(target1.version).toBe('11.5');
+
+    const target2 = resolveAxlTarget('cucm.lab.local');
+    expect(target2.version).toBe('15.0');
+  });
 });

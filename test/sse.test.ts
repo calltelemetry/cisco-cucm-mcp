@@ -1,6 +1,7 @@
 import { test, expect } from "vitest";
 import type { Server } from "node:http";
 import { startSseServer } from "../src/sse.js";
+import { SERVER_VERSION } from "../src/server.js";
 
 test("SSE Server: responds 200 OK to /healthz and /health", async () => {
   const server: Server = await startSseServer({
@@ -20,7 +21,7 @@ test("SSE Server: responds 200 OK to /healthz and /health", async () => {
     const dataHealthz = (await resHealthz.json()) as { status: string; service: string; version: string };
     expect(dataHealthz.status).toBe("ok");
     expect(dataHealthz.service).toBe("cisco-cucm-mcp");
-    expect(dataHealthz.version).toBe("0.8.0");
+    expect(dataHealthz.version).toBe(SERVER_VERSION);
 
     // Test /health
     const resHealth = await fetch(`${baseUrl}/health`);
