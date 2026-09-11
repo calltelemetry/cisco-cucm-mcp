@@ -417,7 +417,7 @@ server.tool(
     outFile: z.string().optional().describe("Optional output file path (default /tmp/cucm-mcp/axl.wsdl)")
   },
   READ_ONLY_NETWORK,
-  async ({ cucm_host, cucm_port, cucm_version, cucm_username, cucm_password, outFile }) => {
+  async ({ cucm_host, cucm_port, cucm_version: _cucm_version, cucm_username, cucm_password, outFile }) => {
     const port = cucm_port ?? 8443;
     const user = cucm_username || process.env.CUCM_USERNAME;
     const pass = cucm_password || process.env.CUCM_PASSWORD;
