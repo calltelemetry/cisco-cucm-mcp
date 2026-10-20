@@ -32,6 +32,9 @@ jobs:
       - name: Build
         run: yarn build
 
+      - name: Verify built MCP version
+        run: yarn test:built-version
+
       - name: Publish to npm
         run: npm publish --access public
         env:

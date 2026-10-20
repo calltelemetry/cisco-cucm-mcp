@@ -4,6 +4,7 @@ import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import { gunzipSync } from "zlib";
 import { dirname, join } from "path";
+import { createRequire } from "node:module";
 
 import {
   listNodeServiceLogs,
@@ -44,7 +45,11 @@ import {
 } from "./coordinated-capture.js";
 
 export const SERVER_NAME = "cisco-cucm-mcp";
-export const SERVER_VERSION = "0.9.0";
+const packageMetadata = createRequire(import.meta.url)("../package.json") as { version: string };
+if (typeof packageMetadata.version !== "string" || packageMetadata.version.length === 0) {
+  throw new Error("package_version_unavailable");
+}
+export const SERVER_VERSION = packageMetadata.version;
 
 export function createMcpServer(): McpServer {
   setupPermissiveTls();
