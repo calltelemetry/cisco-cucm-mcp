@@ -927,5 +927,3 @@ The publish workflow runs typecheck, tests, builds, publishes to npm, and create
 ## License
 
 MIT — see [LICENSE](LICENSE)
-
-<!-- merge-queue canary 2026-10-25 -->
