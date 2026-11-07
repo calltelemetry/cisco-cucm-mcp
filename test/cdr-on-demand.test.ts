@@ -1,5 +1,8 @@
-import { withMockFetch, responseBytes } from './helpers.js';
-import { formatCdrTime, cdrGetFileList, cdrGetFileListMinutes } from '../src/cdr-on-demand.js';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { withMockFetch, responseBytes, buildMultipartRelated } from './helpers.js';
+import { formatCdrTime, cdrGetFileList, cdrGetFileListMinutes, cdrDownloadFile } from '../src/cdr-on-demand.js';
 
 describe('cdr-on-demand', () => {
   const savedEnv = { user: '', pass: '' };
@@ -240,6 +243,63 @@ describe('cdr-on-demand', () => {
           headers: { 'content-type': 'text/xml' },
         });
       });
+    });
+  });
+
+  describe('cdrDownloadFile', () => {
+    it.each([
+      ['CDR with sequence number', 'cdr_StandAloneCluster_01_202602280100_0'],
+      ['CMR with sequence number', 'cmr_StandAloneCluster_02_202602280100_6125'],
+      ['CMR with a leading hyphen in its cluster ID', 'cmr_-edge.cluster_02_202602280100_6125'],
+      ['CMR with repeated periods in its cluster ID', 'cmr_..edge.cluster_02_202602280100_6125'],
+      ['CDR with text extension', 'cdr_StandAloneCluster_01_202602280100.txt'],
+    ] as const)('downloads the listed %s file from its dated repository directory', async (_kind, fileName) => {
+      const boundary = 'DIME-boundary-test';
+      const fileBytes = Buffer.from([0x63, 0x64, 0x72, 0x00, 0xff, 0x0a]);
+      const multipart = buildMultipartRelated(boundary, [
+        {
+          headers: { 'Content-Type': 'application/xop+xml; charset=UTF-8; type="text/xml"' },
+          body: '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Body/></soapenv:Envelope>',
+        },
+        {
+          headers: { 'Content-Type': 'application/octet-stream', 'Content-Transfer-Encoding': 'binary' },
+          body: fileBytes,
+        },
+      ]);
+      const directory = mkdtempSync(join(tmpdir(), 'cucm-cdr-download-'));
+      const outFile = join(directory, 'download.bin');
+      const expectedRemotePath = `/var/log/active/cm/cdr_repository/processed/20260228/${fileName}`;
+
+      try {
+        const h = withMockFetch(async () => {
+          const result = await cdrDownloadFile('10.0.0.1', fileName, outFile);
+          expect(result).toEqual({ filePath: outFile, bytes: fileBytes.length, server: '10.0.0.1' });
+          expect(readFileSync(outFile)).toEqual(fileBytes);
+        });
+
+        await h.run(async (url, init) => {
+          expect(url).toBe('https://10.0.0.1:8443/logcollectionservice/services/DimeGetFileService');
+          expect(String(init.body)).toContain(`<FileName xsi:type="get:FileName" xmlns:get="http://cisco.com/ccm/serviceability/soap/LogCollection/GetFile/">${expectedRemotePath}</FileName>`);
+          return responseBytes(multipart, {
+            headers: { 'content-type': `multipart/related; boundary="${boundary}"; type="application/xop+xml"` },
+          });
+        });
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    });
+
+    it.each([
+      '../cdr_StandAloneCluster_01_202602280100.txt',
+      'cmr_StandAloneCluster_01_202602300100.txt',
+      'cdr_StandAloneCluster_01_202602280100.txt\n',
+    ])('rejects a non-basename or invalid-date CDR repository filename', async (fileName) => {
+      const h = withMockFetch(async ({ calls }) => {
+        await expect(cdrDownloadFile('10.0.0.1', fileName)).rejects.toThrow('Invalid CDR repository filename');
+        expect(calls).toHaveLength(0);
+      });
+
+      await h.run(async () => responseBytes(Buffer.from('failure'), { status: 500 }));
     });
   });
 });
