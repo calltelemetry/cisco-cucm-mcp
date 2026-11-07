@@ -146,9 +146,31 @@ function parseCdrTime(s: string): Date {
   return new Date(Date.UTC(year, month, day, hour, minute));
 }
 
+const CDR_REPOSITORY_FILE_NAME =
+  /^(?:cdr|cmr)_[A-Za-z0-9._-]+_\d+_(\d{12})(?:_\d+)?(?:\.(?:txt|csv))?$/i;
+
+function cdrRepositoryFilePath(fileName: string): string {
+  if (
+    typeof fileName !== "string" ||
+    fileName.length > 240 ||
+    /[\\/\0]/.test(fileName)
+  ) {
+    throw new Error("Invalid CDR repository filename");
+  }
+
+  const match = CDR_REPOSITORY_FILE_NAME.exec(fileName);
+  const timestamp = match?.[1];
+  if (!timestamp || formatCdrTime(parseCdrTime(timestamp)) !== timestamp) {
+    throw new Error("Invalid CDR repository filename");
+  }
+
+  const dateDirectory = timestamp.slice(0, 8);
+  return `/var/log/active/cm/cdr_repository/processed/${dateDirectory}/${fileName}`;
+}
+
 /**
- * Download a CDR file by filename (as returned by cdr_get_file_list).
- * CDR files live under /var/log/active/cm/cdr_repository/ on CUCM.
+ * Download a CDR or CMR file by filename (as returned by cdr_get_file_list).
+ * Repository files are stored under processed/<UTC date> on CUCM.
  *
  * @param hostOrUrl  CUCM hostname or URL
  * @param fileName   CDR filename from cdr_get_file_list results
@@ -163,9 +185,7 @@ export async function cdrDownloadFile(
   auth?: DimeAuth,
   port?: number,
 ): Promise<{ filePath: string; bytes: number; server: string }> {
-  // CDR files are under processed/ by default; CMR files under cmr/
-  const basePath = "/var/log/active/cm/cdr_repository/processed/";
-  const remotePath = `${basePath}${fileName}`;
+  const remotePath = cdrRepositoryFilePath(fileName);
 
   const dl = await getOneFile(hostOrUrl, remotePath, auth, port);
   const saved = writeDownloadedFile(dl, outFile);
