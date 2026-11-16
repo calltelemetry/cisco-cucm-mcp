@@ -17,13 +17,13 @@ const risXml = `<?xml version="1.0"?>
               <CmDevices>
                 <item>
                   <Name>SEP001122334455</Name>
-                  <IPAddress><item><IP>10.0.1.100</IP><IPAddrType>ipv4</IPAddrType></item></IPAddress>
+                  <IPAddress><item><IP>198.51.100.100</IP><IPAddrType>ipv4</IPAddrType></item></IPAddress>
                   <Status>Registered</Status>
                   <Protocol>SIP</Protocol>
                 </item>
                 <item>
                   <Name>SEP665544332211</Name>
-                  <IPAddress><item><IP>10.0.1.101</IP><IPAddrType>ipv4</IPAddrType></item></IPAddress>
+                  <IPAddress><item><IP>198.51.100.101</IP><IPAddrType>ipv4</IPAddrType></item></IPAddress>
                   <Status>Registered</Status>
                   <Protocol>SIP</Protocol>
                 </item>
@@ -35,7 +35,7 @@ const risXml = `<?xml version="1.0"?>
               <CmDevices>
                 <item>
                   <Name>SEPAABBCCDDEEFF</Name>
-                  <IPAddress><item><IP>10.0.2.50</IP><IPAddrType>ipv4</IPAddrType></item></IPAddress>
+                  <IPAddress><item><IP>203.0.113.50</IP><IPAddrType>ipv4</IPAddrType></item></IPAddress>
                   <Status>UnRegistered</Status>
                   <Protocol>SIP</Protocol>
                 </item>
@@ -54,22 +54,22 @@ const perfmonXml = `<?xml version="1.0"?>
     <ns:perfmonCollectCounterDataResponse xmlns:ns="http://schemas.cisco.com/ast/soap">
       <ArrayOfCounterInfo>
         <item>
-          <Name>\\\\10.0.0.1\\Cisco CallManager\\CallsActive</Name>
+          <Name>\\\\192.0.2.1\\Cisco CallManager\\CallsActive</Name>
           <Value>42</Value>
           <CStatus>0</CStatus>
         </item>
         <item>
-          <Name>\\\\10.0.0.1\\Cisco CallManager\\RegisteredHardwarePhones</Name>
+          <Name>\\\\192.0.2.1\\Cisco CallManager\\RegisteredHardwarePhones</Name>
           <Value>150</Value>
           <CStatus>0</CStatus>
         </item>
         <item>
-          <Name>\\\\10.0.0.1\\Cisco CallManager\\RegisteredOtherStationDevices</Name>
+          <Name>\\\\192.0.2.1\\Cisco CallManager\\RegisteredOtherStationDevices</Name>
           <Value>25</Value>
           <CStatus>0</CStatus>
         </item>
         <item>
-          <Name>\\\\10.0.0.1\\Cisco CallManager\\CallsCompleted</Name>
+          <Name>\\\\192.0.2.1\\Cisco CallManager\\CallsCompleted</Name>
           <Value>9876</Value>
           <CStatus>0</CStatus>
         </item>
@@ -178,7 +178,7 @@ describe('clusterHealthCheck', () => {
 
   it('all 3 sub-queries succeed — full result', async () => {
     const h = withMockFetch(async () => {
-      const r = await clusterHealthCheck('10.0.0.1');
+      const r = await clusterHealthCheck('192.0.2.1');
 
       // No errors
       expect(r.errors).toHaveLength(0);
@@ -218,7 +218,7 @@ describe('clusterHealthCheck', () => {
 
   it('one query fails — partial result with error in errors[]', async () => {
     const h = withMockFetch(async () => {
-      const r = await clusterHealthCheck('10.0.0.1');
+      const r = await clusterHealthCheck('192.0.2.1');
 
       // Should have exactly 1 error (perfmon failed)
       expect(r.errors).toHaveLength(1);
@@ -248,7 +248,7 @@ describe('clusterHealthCheck', () => {
 
   it('all queries fail — null sections with 3 errors', async () => {
     const h = withMockFetch(async () => {
-      const r = await clusterHealthCheck('10.0.0.1');
+      const r = await clusterHealthCheck('192.0.2.1');
 
       expect(r.errors).toHaveLength(3);
       expect(r.devices).toBeNull();
@@ -269,7 +269,7 @@ describe('clusterHealthCheck', () => {
 
   it('counter extraction finds the right values', async () => {
     const h = withMockFetch(async () => {
-      const r = await clusterHealthCheck('10.0.0.1');
+      const r = await clusterHealthCheck('192.0.2.1');
 
       expect(r.counters).not.toBeNull();
       expect(r.counters!.callsActive).toBe(42);
@@ -290,7 +290,7 @@ describe('clusterHealthCheck', () => {
 
   it('device count aggregation works', async () => {
     const h = withMockFetch(async () => {
-      const r = await clusterHealthCheck('10.0.0.1');
+      const r = await clusterHealthCheck('192.0.2.1');
 
       expect(r.devices).not.toBeNull();
       // 2 registered on pub, 1 unregistered on sub
@@ -316,7 +316,7 @@ describe('clusterHealthCheck', () => {
     <ns:perfmonCollectCounterDataResponse xmlns:ns="http://schemas.cisco.com/ast/soap">
       <ArrayOfCounterInfo>
         <item>
-          <Name>\\\\10.0.0.1\\Cisco CallManager\\CallsActive</Name>
+          <Name>\\\\192.0.2.1\\Cisco CallManager\\CallsActive</Name>
           <Value>7</Value>
           <CStatus>0</CStatus>
         </item>
@@ -326,7 +326,7 @@ describe('clusterHealthCheck', () => {
 </soapenv:Envelope>`;
 
     const h = withMockFetch(async () => {
-      const r = await clusterHealthCheck('10.0.0.1');
+      const r = await clusterHealthCheck('192.0.2.1');
 
       expect(r.counters).not.toBeNull();
       expect(r.counters!.callsActive).toBe(7);

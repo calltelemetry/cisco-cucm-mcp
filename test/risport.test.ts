@@ -32,7 +32,7 @@ describe('risport', () => {
                 <item>
                   <Name>SEP001122334455</Name>
                   <IPAddress>
-                    <item><IP>10.0.1.100</IP><IPAddrType>ipv4</IPAddrType></item>
+                    <item><IP>198.51.100.100</IP><IPAddrType>ipv4</IPAddrType></item>
                   </IPAddress>
                   <Description>Lobby Phone</Description>
                   <DirNumber>1000-Registered</DirNumber>
@@ -45,7 +45,7 @@ describe('risport', () => {
                 <item>
                   <Name>SEP665544332211</Name>
                   <IPAddress>
-                    <item><IP>10.0.1.101</IP><IPAddrType>ipv4</IPAddrType></item>
+                    <item><IP>198.51.100.101</IP><IPAddrType>ipv4</IPAddrType></item>
                   </IPAddress>
                   <Description>Conference Room</Description>
                   <DirNumber>1001-Registered</DirNumber>
@@ -64,7 +64,7 @@ describe('risport', () => {
                 <item>
                   <Name>SEPAABBCCDDEEFF</Name>
                   <IPAddress>
-                    <item><IP>10.0.2.50</IP><IPAddrType>ipv4</IPAddrType></item>
+                    <item><IP>203.0.113.50</IP><IPAddrType>ipv4</IPAddrType></item>
                   </IPAddress>
                   <Description>Remote Office</Description>
                   <DirNumber>2000-Registered</DirNumber>
@@ -85,20 +85,20 @@ describe('risport', () => {
 
   it('selectCmDevice parses multi-node response', async () => {
     const h = withMockFetch(async () => {
-      const r = await selectCmDevice('10.0.0.1', { maxReturnedDevices: 1000 });
+      const r = await selectCmDevice('192.0.2.1', { maxReturnedDevices: 1000 });
       expect(r.totalDevicesFound).toBe(3);
       expect(r.cmNodes).toHaveLength(2);
       expect(r.cmNodes[0]!.name).toBe('cucm15-pub');
       expect(r.cmNodes[0]!.devices).toHaveLength(2);
       expect(r.cmNodes[0]!.devices[0]!.name).toBe('SEP001122334455');
-      expect(r.cmNodes[0]!.devices[0]!.ipAddress).toBe('10.0.1.100');
+      expect(r.cmNodes[0]!.devices[0]!.ipAddress).toBe('198.51.100.100');
       expect(r.cmNodes[0]!.devices[0]!.protocol).toBe('SIP');
       expect(r.cmNodes[0]!.devices[0]!.dirNumber).toBe('1000-Registered');
       expect(r.cmNodes[0]!.devices[0]!.status).toBe('Registered');
       expect(r.cmNodes[1]!.name).toBe('cucm15-sub');
       expect(r.cmNodes[1]!.devices).toHaveLength(1);
       expect(r.cmNodes[1]!.devices[0]!.name).toBe('SEPAABBCCDDEEFF');
-      expect(r.cmNodes[1]!.devices[0]!.ipAddress).toBe('10.0.2.50');
+      expect(r.cmNodes[1]!.devices[0]!.ipAddress).toBe('203.0.113.50');
     });
 
     await h.run(async () =>
@@ -123,7 +123,7 @@ describe('risport', () => {
                 <item>
                   <Name>SEP001122334455</Name>
                   <IPAddress>
-                    <item><IP>10.0.1.100</IP><IPAddrType>ipv4</IPAddrType></item>
+                    <item><IP>198.51.100.100</IP><IPAddrType>ipv4</IPAddrType></item>
                   </IPAddress>
                   <Status>Registered</Status>
                   <Protocol>SIP</Protocol>
@@ -139,12 +139,12 @@ describe('risport', () => {
 
   it('selectCmDevice handles single node single device', async () => {
     const h = withMockFetch(async () => {
-      const r = await selectCmDevice('10.0.0.1');
+      const r = await selectCmDevice('192.0.2.1');
       expect(r.totalDevicesFound).toBe(1);
       expect(r.cmNodes).toHaveLength(1);
       expect(r.cmNodes[0]!.devices).toHaveLength(1);
       expect(r.cmNodes[0]!.devices[0]!.name).toBe('SEP001122334455');
-      expect(r.cmNodes[0]!.devices[0]!.ipAddress).toBe('10.0.1.100');
+      expect(r.cmNodes[0]!.devices[0]!.ipAddress).toBe('198.51.100.100');
       expect(r.cmNodes[0]!.devices[0]!.status).toBe('Registered');
     });
 
@@ -165,11 +165,11 @@ describe('risport', () => {
         <CmNodes>
           <item>
             <ReturnCode>Ok</ReturnCode>
-            <Name>10.0.0.1</Name>
+            <Name>192.0.2.1</Name>
             <CmDevices>
               <item>
                 <Name>SEP001122334455</Name>
-                <IpAddress>10.0.1.100</IpAddress>
+                <IpAddress>198.51.100.100</IpAddress>
                 <Status>1</Status>
                 <Protocol>SIP</Protocol>
               </item>
@@ -183,11 +183,11 @@ describe('risport', () => {
 
   it('selectCmDevice handles legacy response without selectCmDeviceReturn wrapper', async () => {
     const h = withMockFetch(async () => {
-      const r = await selectCmDevice('10.0.0.1');
+      const r = await selectCmDevice('192.0.2.1');
       expect(r.totalDevicesFound).toBe(1);
       expect(r.cmNodes).toHaveLength(1);
       expect(r.cmNodes[0]!.devices[0]!.name).toBe('SEP001122334455');
-      expect(r.cmNodes[0]!.devices[0]!.ipAddress).toBe('10.0.1.100');
+      expect(r.cmNodes[0]!.devices[0]!.ipAddress).toBe('198.51.100.100');
       expect(r.cmNodes[0]!.devices[0]!.status).toBe('1');
     });
 
@@ -200,13 +200,13 @@ describe('risport', () => {
 
   it('selectCmDeviceByIp passes IPV4Address SelectBy', async () => {
     const h = withMockFetch(async () => {
-      await selectCmDeviceByIp('10.0.0.1', '10.0.1.100');
+      await selectCmDeviceByIp('192.0.2.1', '198.51.100.100');
     });
 
     await h.run(async (_url, init) => {
       const body = typeof init.body === 'string' ? init.body : Buffer.from(init.body as ArrayBuffer).toString('utf8');
       expect(body).toContain('IPV4Address');
-      expect(body).toContain('10.0.1.100');
+      expect(body).toContain('198.51.100.100');
       return responseBytes(Buffer.from(singleDeviceXml, 'utf8'), {
         headers: { 'content-type': 'text/xml' },
       });
@@ -225,7 +225,7 @@ describe('risport', () => {
 </soapenv:Envelope>`;
 
     const h = withMockFetch(async () => {
-      await expect(selectCmDevice('10.0.0.1')).rejects.toThrow(/fault/i);
+      await expect(selectCmDevice('192.0.2.1')).rejects.toThrow(/fault/i);
     });
 
     await h.run(async () =>
@@ -253,7 +253,7 @@ describe('risport', () => {
               <CmDevices>
                 <item>
                   <Name>SEP001122334455</Name>
-                  <IPAddress><item><IP>10.0.1.100</IP></item></IPAddress>
+                  <IPAddress><item><IP>198.51.100.100</IP></item></IPAddress>
                   <Status>Registered</Status>
                   <Protocol>SIP</Protocol>
                 </item>
@@ -281,7 +281,7 @@ describe('risport', () => {
               <CmDevices>
                 <item>
                   <Name>SEP665544332211</Name>
-                  <IPAddress><item><IP>10.0.1.101</IP></item></IPAddress>
+                  <IPAddress><item><IP>198.51.100.101</IP></item></IPAddress>
                   <Status>Registered</Status>
                   <Protocol>SIP</Protocol>
                 </item>
@@ -293,7 +293,7 @@ describe('risport', () => {
               <CmDevices>
                 <item>
                   <Name>SEPAABBCCDDEEFF</Name>
-                  <IPAddress><item><IP>10.0.2.50</IP></item></IPAddress>
+                  <IPAddress><item><IP>203.0.113.50</IP></item></IPAddress>
                   <Status>Registered</Status>
                   <Protocol>SIP</Protocol>
                 </item>
@@ -309,7 +309,7 @@ describe('risport', () => {
 
   it('selectCmDevice extracts stateInfo from response', async () => {
     const h = withMockFetch(async () => {
-      const r = await selectCmDevice('10.0.0.1', { maxReturnedDevices: 1000 });
+      const r = await selectCmDevice('192.0.2.1', { maxReturnedDevices: 1000 });
       expect(r.stateInfo).toBe('cursor-page2');
       expect(r.totalDevicesFound).toBe(3);
       expect(r.cmNodes[0]!.devices).toHaveLength(1);
@@ -324,7 +324,7 @@ describe('risport', () => {
 
   it('selectCmDevice returns undefined stateInfo on last page', async () => {
     const h = withMockFetch(async () => {
-      const r = await selectCmDevice('10.0.0.1');
+      const r = await selectCmDevice('192.0.2.1');
       expect(r.stateInfo).toBeUndefined();
     });
 
@@ -337,7 +337,7 @@ describe('risport', () => {
 
   it('selectCmDevice passes stateInfo in SOAP envelope', async () => {
     const h = withMockFetch(async () => {
-      await selectCmDevice('10.0.0.1', { stateInfo: 'my-cursor-123' });
+      await selectCmDevice('192.0.2.1', { stateInfo: 'my-cursor-123' });
     });
 
     await h.run(async (_url, init) => {
@@ -352,7 +352,7 @@ describe('risport', () => {
   it('selectCmDeviceAll auto-paginates and merges nodes', async () => {
     let callCount = 0;
     const h = withMockFetch(async () => {
-      const r = await selectCmDeviceAll('10.0.0.1');
+      const r = await selectCmDeviceAll('192.0.2.1');
       expect(r.totalDevicesFound).toBe(3);
       // Nodes merged by name: cucm15-pub has 2 devices (1 from each page), cucm15-sub has 1
       expect(r.cmNodes).toHaveLength(2);
@@ -404,14 +404,14 @@ describe('risport', () => {
               <CtiItems>
                 <item>
                   <Name>CTIPort1</Name>
-                  <IPAddress>10.0.0.50</IPAddress>
+                  <IPAddress>192.0.2.50</IPAddress>
                   <Status>Open</Status>
                   <AppID>CiscoJTAPI</AppID>
                   <UserID>jtapiuser</UserID>
                 </item>
                 <item>
                   <Name>CTIRoutePoint1</Name>
-                  <IPAddress>10.0.0.51</IPAddress>
+                  <IPAddress>192.0.2.51</IPAddress>
                   <Status>Open</Status>
                   <AppID>CiscoJTAPI</AppID>
                   <UserID>jtapiuser</UserID>
@@ -426,11 +426,11 @@ describe('risport', () => {
 </soapenv:Envelope>`;
 
     const h = withMockFetch(async () => {
-      const r = await selectCtiItem('10.0.0.1', { ctiMgrClass: 'Provider' });
+      const r = await selectCtiItem('192.0.2.1', { ctiMgrClass: 'Provider' });
       expect(r.totalItemsFound).toBe(2);
       expect(r.items).toHaveLength(2);
       expect(r.items[0]!.name).toBe('CTIPort1');
-      expect(r.items[0]!.ipAddress).toBe('10.0.0.50');
+      expect(r.items[0]!.ipAddress).toBe('192.0.2.50');
       expect(r.items[0]!.status).toBe('Open');
       expect(r.items[0]!.appId).toBe('CiscoJTAPI');
       expect(r.items[0]!.userId).toBe('jtapiuser');

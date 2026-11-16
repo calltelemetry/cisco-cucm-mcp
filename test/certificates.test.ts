@@ -73,7 +73,7 @@ describe("parseCertListOutput", () => {
     const output = `Unit: tomcat
 Type: own
 Name: tomcat
-Issuer: CN=cucm-pub.lab.local
+Issuer: CN=cucm-pub.example.com
 Expires: Thu Jan 30 00:53:07 UTC 2030`;
 
     const result = parseCertListOutput(output, "own");
@@ -82,7 +82,7 @@ Expires: Thu Jan 30 00:53:07 UTC 2030`;
       unit: "tomcat",
       type: "own",
       name: "tomcat",
-      issuer: "CN=cucm-pub.lab.local",
+      issuer: "CN=cucm-pub.example.com",
       expires: "Thu Jan 30 00:53:07 UTC 2030",
     });
   });
@@ -91,19 +91,19 @@ Expires: Thu Jan 30 00:53:07 UTC 2030`;
     const output = `Unit: tomcat
 Type: own
 Name: tomcat
-Issuer: CN=cucm-pub.lab.local
+Issuer: CN=cucm-pub.example.com
 Expires: Thu Jan 30 00:53:07 UTC 2030
 
 Unit: CallManager
 Type: own
 Name: CallManager
-Issuer: CN=cucm-pub.lab.local
+Issuer: CN=cucm-pub.example.com
 Expires: Fri Feb 14 12:00:00 UTC 2031
 
 Unit: ipsec
 Type: own
 Name: ipsec
-Issuer: CN=cucm-pub.lab.local
+Issuer: CN=cucm-pub.example.com
 Expires: Sat Mar 01 08:30:00 UTC 2029`;
 
     const result = parseCertListOutput(output, "own");
@@ -151,7 +151,7 @@ Expires: Thu Jan 30 00:53:07 UTC 2030
 Unit: tomcat
 Type: own
 Name: tomcat
-Issuer: CN=cucm-pub.lab.local
+Issuer: CN=cucm-pub.example.com
 Expires: Thu Jan 30 00:53:07 UTC 2030`;
 
     const result = parseCertListOutput(output, "own");
@@ -162,7 +162,7 @@ Expires: Thu Jan 30 00:53:07 UTC 2030`;
   it("skips blocks missing Name field", () => {
     const output = `Unit: tomcat
 Type: own
-Issuer: CN=cucm-pub.lab.local
+Issuer: CN=cucm-pub.example.com
 Expires: Thu Jan 30 00:53:07 UTC 2030`;
 
     const result = parseCertListOutput(output, "own");
@@ -183,13 +183,13 @@ Name: tomcat`;
     const output = `Unit:   tomcat
 Type:   own
 Name:   tomcat
-Issuer:   CN=cucm-pub.lab.local
+Issuer:   CN=cucm-pub.example.com
 Expires:   Thu Jan 30 00:53:07 UTC 2030  `;
 
     const result = parseCertListOutput(output, "own");
     expect(result).toHaveLength(1);
     expect(result[0]!.unit).toBe("tomcat");
-    expect(result[0]!.issuer).toBe("CN=cucm-pub.lab.local");
+    expect(result[0]!.issuer).toBe("CN=cucm-pub.example.com");
   });
 
   it("ignores non-certificate lines in output", () => {
@@ -199,7 +199,7 @@ Command: show cert list own
 Unit: tomcat
 Type: own
 Name: tomcat
-Issuer: CN=cucm-pub.lab.local
+Issuer: CN=cucm-pub.example.com
 Expires: Thu Jan 30 00:53:07 UTC 2030`;
 
     const result = parseCertListOutput(output, "own");
@@ -211,7 +211,7 @@ Expires: Thu Jan 30 00:53:07 UTC 2030`;
     const output = `Unit: tomcat
 Type: own
 Name: tomcat
-Issuer: CN=cucm-pub.lab.local
+Issuer: CN=cucm-pub.example.com
 Expires: Thu Jan 30 00:53:07 UTC 2030`;
 
     const result = parseCertListOutput(output, "trust");
@@ -223,7 +223,7 @@ Expires: Thu Jan 30 00:53:07 UTC 2030`;
     const output = `Unit: tomcat
 Type: own
 Name: tomcat
-Issuer: CN=cucm-pub.lab.local
+Issuer: CN=cucm-pub.example.com
 Expires: Thu Jan 30 00:53:07 UTC 2030
 
 
@@ -231,7 +231,7 @@ Expires: Thu Jan 30 00:53:07 UTC 2030
 Unit: CallManager
 Type: own
 Name: CallManager
-Issuer: CN=cucm-pub.lab.local
+Issuer: CN=cucm-pub.example.com
 Expires: Fri Feb 14 12:00:00 UTC 2031`;
 
     const result = parseCertListOutput(output, "own");

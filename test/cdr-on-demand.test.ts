@@ -64,7 +64,7 @@ describe('cdr-on-demand', () => {
 </soapenv:Envelope>`;
 
       const h = withMockFetch(async () => {
-        const r = await cdrGetFileList('10.0.0.1', '202602280100', '202602280200');
+        const r = await cdrGetFileList('192.0.2.1', '202602280100', '202602280200');
         expect(r).toHaveLength(2);
         expect(r[0]!.fileName).toBe('cdr_StandAloneCluster_01_202602280100.txt');
         expect(r[0]!.fileSize).toBe(12345);
@@ -91,7 +91,7 @@ describe('cdr-on-demand', () => {
 </soapenv:Envelope>`;
 
       const h = withMockFetch(async () => {
-        const r = await cdrGetFileList('10.0.0.1', '202602280100', '202602280200');
+        const r = await cdrGetFileList('192.0.2.1', '202602280100', '202602280200');
         expect(r).toEqual([]);
       });
 
@@ -110,7 +110,7 @@ describe('cdr-on-demand', () => {
 </soapenv:Envelope>`;
 
       const h = withMockFetch(async () => {
-        const r = await cdrGetFileList('10.0.0.1', '202602280100', '202602280200');
+        const r = await cdrGetFileList('192.0.2.1', '202602280100', '202602280200');
         expect(r).toEqual([]);
       });
 
@@ -123,19 +123,19 @@ describe('cdr-on-demand', () => {
 
     it('time range exceeding 60 minutes throws', async () => {
       await expect(
-        cdrGetFileList('10.0.0.1', '202602280100', '202602280300')
+        cdrGetFileList('192.0.2.1', '202602280100', '202602280300')
       ).rejects.toThrow(/exceeds 60 minutes/);
     });
 
     it('fromTime after toTime throws', async () => {
       await expect(
-        cdrGetFileList('10.0.0.1', '202602280200', '202602280100')
+        cdrGetFileList('192.0.2.1', '202602280200', '202602280100')
       ).rejects.toThrow(/fromTime must be before toTime/);
     });
 
     it('invalid time format throws', async () => {
       await expect(
-        cdrGetFileList('10.0.0.1', '20260228', '202602280200')
+        cdrGetFileList('192.0.2.1', '20260228', '202602280200')
       ).rejects.toThrow(/Invalid CDR time format/);
     });
 
@@ -152,7 +152,7 @@ describe('cdr-on-demand', () => {
 
       const h = withMockFetch(async () => {
         await expect(
-          cdrGetFileList('10.0.0.1', '202602280100', '202602280200')
+          cdrGetFileList('192.0.2.1', '202602280100', '202602280200')
         ).rejects.toThrow(/fault/i);
       });
 
@@ -169,7 +169,7 @@ describe('cdr-on-demand', () => {
 
       const h = withMockFetch(async () => {
         await expect(
-          cdrGetFileList('10.0.0.1', '202602280100', '202602280200')
+          cdrGetFileList('192.0.2.1', '202602280100', '202602280200')
         ).rejects.toThrow('No file found within the specified time range');
       });
 
@@ -196,7 +196,7 @@ describe('cdr-on-demand', () => {
 </soapenv:Envelope>`;
 
       const h = withMockFetch(async () => {
-        const r = await cdrGetFileList('10.0.0.1', '202602280100', '202602280200');
+        const r = await cdrGetFileList('192.0.2.1', '202602280100', '202602280200');
         expect(r).toHaveLength(1);
         expect(r[0]!.fileName).toBe('cdr_StandAloneCluster_01_202602280100.txt');
         expect(r[0]!.fileSize).toBe(5555);
@@ -213,13 +213,13 @@ describe('cdr-on-demand', () => {
   describe('cdrGetFileListMinutes', () => {
     it('minutesBack exceeding 60 throws', async () => {
       await expect(
-        cdrGetFileListMinutes('10.0.0.1', 90)
+        cdrGetFileListMinutes('192.0.2.1', 90)
       ).rejects.toThrow(/exceeds 60 minutes/);
     });
 
     it('minutesBack zero or negative throws', async () => {
       await expect(
-        cdrGetFileListMinutes('10.0.0.1', 0)
+        cdrGetFileListMinutes('192.0.2.1', 0)
       ).rejects.toThrow(/must be positive/);
     });
 
@@ -233,7 +233,7 @@ describe('cdr-on-demand', () => {
 </soapenv:Envelope>`;
 
       const h = withMockFetch(async () => {
-        const r = await cdrGetFileListMinutes('10.0.0.1', 30);
+        const r = await cdrGetFileListMinutes('192.0.2.1', 30);
         expect(r).toEqual([]);
       });
 
@@ -272,13 +272,13 @@ describe('cdr-on-demand', () => {
 
       try {
         const h = withMockFetch(async () => {
-          const result = await cdrDownloadFile('10.0.0.1', fileName, outFile);
-          expect(result).toEqual({ filePath: outFile, bytes: fileBytes.length, server: '10.0.0.1' });
+          const result = await cdrDownloadFile('192.0.2.1', fileName, outFile);
+          expect(result).toEqual({ filePath: outFile, bytes: fileBytes.length, server: '192.0.2.1' });
           expect(readFileSync(outFile)).toEqual(fileBytes);
         });
 
         await h.run(async (url, init) => {
-          expect(url).toBe('https://10.0.0.1:8443/logcollectionservice/services/DimeGetFileService');
+          expect(url).toBe('https://192.0.2.1:8443/logcollectionservice/services/DimeGetFileService');
           expect(String(init.body)).toContain(`<FileName xsi:type="get:FileName" xmlns:get="http://cisco.com/ccm/serviceability/soap/LogCollection/GetFile/">${expectedRemotePath}</FileName>`);
           return responseBytes(multipart, {
             headers: { 'content-type': `multipart/related; boundary="${boundary}"; type="application/xop+xml"` },
@@ -295,7 +295,7 @@ describe('cdr-on-demand', () => {
       'cdr_StandAloneCluster_01_202602280100.txt\n',
     ])('rejects a non-basename or invalid-date CDR repository filename', async (fileName) => {
       const h = withMockFetch(async ({ calls }) => {
-        await expect(cdrDownloadFile('10.0.0.1', fileName)).rejects.toThrow('Invalid CDR repository filename');
+        await expect(cdrDownloadFile('192.0.2.1', fileName)).rejects.toThrow('Invalid CDR repository filename');
         expect(calls).toHaveLength(0);
       });
 

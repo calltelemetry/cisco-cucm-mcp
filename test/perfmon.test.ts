@@ -32,17 +32,17 @@ describe('perfmon', () => {
     <ns:perfmonCollectCounterDataResponse xmlns:ns="http://schemas.cisco.com/ast/soap">
       <ArrayOfCounterInfo>
         <item>
-          <Name>\\\\10.0.0.1\\Cisco CallManager\\CallsActive</Name>
+          <Name>\\\\192.0.2.1\\Cisco CallManager\\CallsActive</Name>
           <Value>42</Value>
           <CStatus>0</CStatus>
         </item>
         <item>
-          <Name>\\\\10.0.0.1\\Cisco CallManager\\CallsCompleted</Name>
+          <Name>\\\\192.0.2.1\\Cisco CallManager\\CallsCompleted</Name>
           <Value>9876</Value>
           <CStatus>0</CStatus>
         </item>
         <item>
-          <Name>\\\\10.0.0.1\\Cisco CallManager\\RegisteredHardwarePhones</Name>
+          <Name>\\\\192.0.2.1\\Cisco CallManager\\RegisteredHardwarePhones</Name>
           <Value>150</Value>
           <CStatus>0</CStatus>
         </item>
@@ -52,7 +52,7 @@ describe('perfmon', () => {
 </soapenv:Envelope>`;
 
     const h = withMockFetch(async () => {
-      const r = await perfmonCollectCounterData('10.0.0.1', '10.0.0.1', 'Cisco CallManager');
+      const r = await perfmonCollectCounterData('192.0.2.1', '192.0.2.1', 'Cisco CallManager');
       expect(r).toHaveLength(3);
       expect(r[0]!.name).toContain('CallsActive');
       expect(r[0]!.value).toBe(42);
@@ -96,7 +96,7 @@ describe('perfmon', () => {
 </soapenv:Envelope>`;
 
     const h = withMockFetch(async () => {
-      const r = await perfmonListCounter('10.0.0.1', '10.0.0.1');
+      const r = await perfmonListCounter('192.0.2.1', '192.0.2.1');
       expect(r).toHaveLength(2);
       expect(r[0]!.objectName).toBe('Cisco CallManager');
       expect(r[0]!.multiInstance).toBe(true);
@@ -126,7 +126,7 @@ describe('perfmon', () => {
 </soapenv:Envelope>`;
 
     const h = withMockFetch(async () => {
-      const r = await perfmonListInstance('10.0.0.1', '10.0.0.1', 'Cisco CallManager');
+      const r = await perfmonListInstance('192.0.2.1', '192.0.2.1', 'Cisco CallManager');
       expect(r).toEqual(['CallManager', '_Total']);
     });
 
@@ -148,7 +148,7 @@ describe('perfmon', () => {
 </soapenv:Envelope>`;
 
     const h = withMockFetch(async () => {
-      const handle = await perfmonOpenSession('10.0.0.1');
+      const handle = await perfmonOpenSession('192.0.2.1');
       expect(handle).toBe('a1b2c3d4-e5f6-7890-abcd-ef1234567890');
     });
 
@@ -169,9 +169,9 @@ describe('perfmon', () => {
 </soapenv:Envelope>`;
 
     const h = withMockFetch(async () => {
-      await perfmonAddCounter('10.0.0.1', 'session-uuid-123', [
-        '\\\\10.0.0.1\\Cisco CallManager\\CallsActive',
-        '\\\\10.0.0.1\\Cisco CallManager\\CallsCompleted',
+      await perfmonAddCounter('192.0.2.1', 'session-uuid-123', [
+        '\\\\192.0.2.1\\Cisco CallManager\\CallsActive',
+        '\\\\192.0.2.1\\Cisco CallManager\\CallsCompleted',
       ]);
     });
 
@@ -196,12 +196,12 @@ describe('perfmon', () => {
     <ns:perfmonCollectSessionDataResponse xmlns:ns="http://schemas.cisco.com/ast/soap">
       <ArrayOfCounterInfo>
         <item>
-          <Name>\\\\10.0.0.1\\Cisco CallManager\\CallsActive</Name>
+          <Name>\\\\192.0.2.1\\Cisco CallManager\\CallsActive</Name>
           <Value>7</Value>
           <CStatus>0</CStatus>
         </item>
         <item>
-          <Name>\\\\10.0.0.1\\Cisco CallManager\\CallsCompleted</Name>
+          <Name>\\\\192.0.2.1\\Cisco CallManager\\CallsCompleted</Name>
           <Value>1234</Value>
           <CStatus>0</CStatus>
         </item>
@@ -211,7 +211,7 @@ describe('perfmon', () => {
 </soapenv:Envelope>`;
 
     const h = withMockFetch(async () => {
-      const r = await perfmonCollectSessionData('10.0.0.1', 'session-uuid-123');
+      const r = await perfmonCollectSessionData('192.0.2.1', 'session-uuid-123');
       expect(r).toHaveLength(2);
       expect(r[0]!.name).toContain('CallsActive');
       expect(r[0]!.value).toBe(7);
@@ -237,8 +237,8 @@ describe('perfmon', () => {
 </soapenv:Envelope>`;
 
     const h = withMockFetch(async () => {
-      await perfmonRemoveCounter('10.0.0.1', 'session-uuid-123', [
-        '\\\\10.0.0.1\\Cisco CallManager\\CallsActive',
+      await perfmonRemoveCounter('192.0.2.1', 'session-uuid-123', [
+        '\\\\192.0.2.1\\Cisco CallManager\\CallsActive',
       ]);
     });
 
@@ -262,7 +262,7 @@ describe('perfmon', () => {
 </soapenv:Envelope>`;
 
     const h = withMockFetch(async () => {
-      await perfmonCloseSession('10.0.0.1', 'session-uuid-123');
+      await perfmonCloseSession('192.0.2.1', 'session-uuid-123');
     });
 
     await h.run(async (url) => {
@@ -286,7 +286,7 @@ describe('perfmon', () => {
 
     const h = withMockFetch(async () => {
       await expect(
-        perfmonCollectCounterData('10.0.0.1', '10.0.0.1', 'NonExistentObject')
+        perfmonCollectCounterData('192.0.2.1', '192.0.2.1', 'NonExistentObject')
       ).rejects.toThrow(/fault/i);
     });
 

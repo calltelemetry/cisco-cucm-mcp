@@ -146,9 +146,9 @@ describe("pcapCallSummary", () => {
 
   // SIP Call-ID extraction
   const sipCallIdOutput = [
-    "abc123@10.0.0.1",
-    "abc123@10.0.0.1",
-    "def456@10.0.0.2",
+    "abc123@192.0.2.1",
+    "abc123@192.0.2.1",
+    "def456@192.0.2.2",
     "",
   ].join("\n");
 
@@ -158,8 +158,8 @@ describe("pcapCallSummary", () => {
     "    Start: 2024-01-01 00:00:00",
     "      End: 2024-01-01 00:01:00",
     "  Src Addr  Src Port  Dst Addr  Dst Port  SSRC  Payload  Packets  Lost  Max Delta  Max Jitter  Mean Jitter",
-    "  10.0.0.1  20000     10.0.0.2  20002     0x1234  0      200      0     20.5       1.2         0.8",
-    "  10.0.0.2  20002     10.0.0.1  20000     0x5678  0      198      2     22.1       1.5         0.9",
+    "  192.0.2.1  20000     192.0.2.2  20002     0x1234  0      200      0     20.5       1.2         0.8",
+    "  192.0.2.2  20002     192.0.2.1  20000     0x5678  0      198      2     22.1       1.5         0.9",
     "========================= RTP Streams ========================",
   ].join("\n");
 
@@ -170,8 +170,8 @@ describe("pcapCallSummary", () => {
     "Filter:<No Filter>",
     "                                               |       <-      | |       ->      | |     Total     |    Rel Start    |   Duration   |",
     "                                               | Frames  Bytes | | Frames  Bytes | | Frames  Bytes | |               |              |",
-    "10.0.0.1         <->  10.0.0.2                     200  140000     200  140000       400  280000       0.000            60.5",
-    "10.0.0.1         <->  10.0.0.3                      50   40000      50   40000       100   80000       0.000            60.5",
+    "192.0.2.1         <->  192.0.2.2                     200  140000     200  140000       400  280000       0.000            60.5",
+    "192.0.2.1         <->  192.0.2.3                      50   40000      50   40000       100   80000       0.000            60.5",
     "================================================================================",
   ].join("\n");
 
@@ -212,13 +212,13 @@ describe("pcapCallSummary", () => {
     expect(protocols.sdp).toBe(20);
 
     expect(result.sipCalls).toBe(2);
-    expect(result.sipCallIds).toEqual(["abc123@10.0.0.1", "def456@10.0.0.2"]);
+    expect(result.sipCallIds).toEqual(["abc123@192.0.2.1", "def456@192.0.2.2"]);
     expect(result.rtpStreams).toBe(2);
 
     const endpoints = result.endpoints as string[];
-    expect(endpoints).toContain("10.0.0.1");
-    expect(endpoints).toContain("10.0.0.2");
-    expect(endpoints).toContain("10.0.0.3");
+    expect(endpoints).toContain("192.0.2.1");
+    expect(endpoints).toContain("192.0.2.2");
+    expect(endpoints).toContain("192.0.2.3");
   });
 
   it("handles missing SIP/RTP gracefully (catch blocks)", async () => {
@@ -285,13 +285,13 @@ describe("pcapSipCalls", () => {
   // Tab-separated SIP messages:
   // frame.time_relative \t ip.src \t ip.dst \t sip.Method \t sip.Status-Code \t sip.Status-Line \t sip.Call-ID \t sip.from.addr \t sip.to.addr \t sip.CSeq \t sip.r-uri \t sdp.media \t sdp.connection_info
   const sipOutput = [
-    "0.000\t10.0.0.1\t10.0.0.2\tINVITE\t\t\tabc123@10.0.0.1\talice@test\tbob@test\t1 INVITE\tsip:bob@10.0.0.2\taudio 20000 RTP/AVP 0\tIN IP4 10.0.0.1",
-    "0.050\t10.0.0.2\t10.0.0.1\t\t100\tSIP/2.0 100 Trying\tabc123@10.0.0.1\talice@test\tbob@test\t1 INVITE\t\t\t",
-    "0.200\t10.0.0.2\t10.0.0.1\t\t180\tSIP/2.0 180 Ringing\tabc123@10.0.0.1\talice@test\tbob@test\t1 INVITE\t\t\t",
-    "1.500\t10.0.0.2\t10.0.0.1\t\t200\tSIP/2.0 200 OK\tabc123@10.0.0.1\talice@test\tbob@test\t1 INVITE\t\taudio 20002 RTP/AVP 0\tIN IP4 10.0.0.2",
-    "1.510\t10.0.0.1\t10.0.0.2\tACK\t\t\tabc123@10.0.0.1\talice@test\tbob@test\t1 ACK\tsip:bob@10.0.0.2\t\t",
-    "30.000\t10.0.0.1\t10.0.0.2\tBYE\t\t\tabc123@10.0.0.1\talice@test\tbob@test\t2 BYE\tsip:bob@10.0.0.2\t\t",
-    "30.050\t10.0.0.2\t10.0.0.1\t\t200\tSIP/2.0 200 OK\tabc123@10.0.0.1\talice@test\tbob@test\t2 BYE\t\t\t",
+    "0.000\t192.0.2.1\t192.0.2.2\tINVITE\t\t\tabc123@192.0.2.1\talice@test\tbob@test\t1 INVITE\tsip:bob@192.0.2.2\taudio 20000 RTP/AVP 0\tIN IP4 192.0.2.1",
+    "0.050\t192.0.2.2\t192.0.2.1\t\t100\tSIP/2.0 100 Trying\tabc123@192.0.2.1\talice@test\tbob@test\t1 INVITE\t\t\t",
+    "0.200\t192.0.2.2\t192.0.2.1\t\t180\tSIP/2.0 180 Ringing\tabc123@192.0.2.1\talice@test\tbob@test\t1 INVITE\t\t\t",
+    "1.500\t192.0.2.2\t192.0.2.1\t\t200\tSIP/2.0 200 OK\tabc123@192.0.2.1\talice@test\tbob@test\t1 INVITE\t\taudio 20002 RTP/AVP 0\tIN IP4 192.0.2.2",
+    "1.510\t192.0.2.1\t192.0.2.2\tACK\t\t\tabc123@192.0.2.1\talice@test\tbob@test\t1 ACK\tsip:bob@192.0.2.2\t\t",
+    "30.000\t192.0.2.1\t192.0.2.2\tBYE\t\t\tabc123@192.0.2.1\talice@test\tbob@test\t2 BYE\tsip:bob@192.0.2.2\t\t",
+    "30.050\t192.0.2.2\t192.0.2.1\t\t200\tSIP/2.0 200 OK\tabc123@192.0.2.1\talice@test\tbob@test\t2 BYE\t\t\t",
     "",
   ].join("\n");
 
@@ -302,7 +302,7 @@ describe("pcapSipCalls", () => {
     expect(flows).toHaveLength(1);
 
     const flow = flows[0]!;
-    expect(flow.callId).toBe("abc123@10.0.0.1");
+    expect(flow.callId).toBe("abc123@192.0.2.1");
     expect(flow.from).toBe("alice@test");
     expect(flow.to).toBe("bob@test");
     expect(flow.messages).toHaveLength(7);
@@ -327,9 +327,9 @@ describe("pcapSipCalls", () => {
 
   it("detects unanswered calls (no 200 OK for INVITE)", async () => {
     const unanswered = [
-      "0.000\t10.0.0.1\t10.0.0.2\tINVITE\t\t\tcall-noanswer@host\talice@test\tbob@test\t1 INVITE\tsip:bob@10.0.0.2\t\t",
-      "0.050\t10.0.0.2\t10.0.0.1\t\t100\tSIP/2.0 100 Trying\tcall-noanswer@host\talice@test\tbob@test\t1 INVITE\t\t\t",
-      "10.000\t10.0.0.2\t10.0.0.1\t\t486\tSIP/2.0 486 Busy Here\tcall-noanswer@host\talice@test\tbob@test\t1 INVITE\t\t\t",
+      "0.000\t192.0.2.1\t192.0.2.2\tINVITE\t\t\tcall-noanswer@host\talice@test\tbob@test\t1 INVITE\tsip:bob@192.0.2.2\t\t",
+      "0.050\t192.0.2.2\t192.0.2.1\t\t100\tSIP/2.0 100 Trying\tcall-noanswer@host\talice@test\tbob@test\t1 INVITE\t\t\t",
+      "10.000\t192.0.2.2\t192.0.2.1\t\t486\tSIP/2.0 486 Busy Here\tcall-noanswer@host\talice@test\tbob@test\t1 INVITE\t\t\t",
       "",
     ].join("\n");
     mockTsharkOutput(unanswered);
@@ -350,9 +350,9 @@ describe("pcapSipCalls", () => {
 
   it("handles multiple Call-IDs in the same capture", async () => {
     const multiCall = [
-      "0.000\t10.0.0.1\t10.0.0.2\tINVITE\t\t\tcall-A@host\talice\tbob\t1 INVITE\t\t\t",
-      "0.100\t10.0.0.3\t10.0.0.4\tINVITE\t\t\tcall-B@host\tcharlie\tdave\t1 INVITE\t\t\t",
-      "1.000\t10.0.0.2\t10.0.0.1\t\t200\tSIP/2.0 200 OK\tcall-A@host\talice\tbob\t1 INVITE\t\t\t",
+      "0.000\t192.0.2.1\t192.0.2.2\tINVITE\t\t\tcall-A@host\talice\tbob\t1 INVITE\t\t\t",
+      "0.100\t192.0.2.3\t192.0.2.4\tINVITE\t\t\tcall-B@host\tcharlie\tdave\t1 INVITE\t\t\t",
+      "1.000\t192.0.2.2\t192.0.2.1\t\t200\tSIP/2.0 200 OK\tcall-A@host\talice\tbob\t1 INVITE\t\t\t",
       "",
     ].join("\n");
     mockTsharkOutput(multiCall);
@@ -380,8 +380,8 @@ describe("pcapSipCalls", () => {
     const flow = (await pcapSipCalls(FAKE_FILE))[0]!;
     const invite = flow.messages[0]!;
     expect(invite.sdpMedia).toBe("audio 20000 RTP/AVP 0");
-    expect(invite.sdpConnectionInfo).toBe("IN IP4 10.0.0.1");
-    expect(invite.requestUri).toBe("sip:bob@10.0.0.2");
+    expect(invite.sdpConnectionInfo).toBe("IN IP4 192.0.2.1");
+    expect(invite.requestUri).toBe("sip:bob@192.0.2.2");
   });
 });
 
@@ -395,12 +395,12 @@ describe("pcapScppMessages", () => {
   // Tab-separated SCCP output:
   // frame.time_relative \t ip.src \t ip.dst \t skinny.messageId \t callingPartyName \t callingPartyNumber \t calledPartyName \t calledParty \t callReference \t lineInstance \t callState
   const scppOutput = [
-    "0.000\t10.0.0.10\t10.0.0.1\t6\t\t\t\t\t\t\t",
-    "0.010\t10.0.0.1\t10.0.0.10\t130\t\t\t\t\t\t\t",
-    "0.020\t10.0.0.1\t10.0.0.10\t134\t\t\t\t\t\t\t",
-    "0.050\t10.0.0.10\t10.0.0.1\t3\t\t1001\t\t\t\t\t",
-    "0.100\t10.0.0.1\t10.0.0.10\t285\tAlice\t1001\tBob\t2001\t42\t1\t3",
-    "0.150\t10.0.0.1\t10.0.0.10\t273\t\t\t\t\t\t\t",
+    "0.000\t192.0.2.10\t192.0.2.1\t6\t\t\t\t\t\t\t",
+    "0.010\t192.0.2.1\t192.0.2.10\t130\t\t\t\t\t\t\t",
+    "0.020\t192.0.2.1\t192.0.2.10\t134\t\t\t\t\t\t\t",
+    "0.050\t192.0.2.10\t192.0.2.1\t3\t\t1001\t\t\t\t\t",
+    "0.100\t192.0.2.1\t192.0.2.10\t285\tAlice\t1001\tBob\t2001\t42\t1\t3",
+    "0.150\t192.0.2.1\t192.0.2.10\t273\t\t\t\t\t\t\t",
     "",
   ].join("\n");
 
@@ -428,8 +428,8 @@ describe("pcapScppMessages", () => {
     mockTsharkOutput(scppOutput);
 
     const result = await pcapScppMessages(FAKE_FILE);
-    expect(result.devices).toContain("10.0.0.1");
-    expect(result.devices).toContain("10.0.0.10");
+    expect(result.devices).toContain("192.0.2.1");
+    expect(result.devices).toContain("192.0.2.10");
     expect(result.devices).toHaveLength(2);
   });
 
@@ -460,16 +460,16 @@ describe("pcapScppMessages", () => {
   it("applies deviceFilter to tshark display filter", async () => {
     mockTsharkOutput("");
 
-    await pcapScppMessages(FAKE_FILE, "10.0.0.10");
+    await pcapScppMessages(FAKE_FILE, "192.0.2.10");
 
     const call = (execFile as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
     const args: string[] = call[1];
     const filterIdx = args.indexOf("-Y");
-    expect(args[filterIdx + 1]).toBe("skinny and ip.addr == 10.0.0.10");
+    expect(args[filterIdx + 1]).toBe("skinny and ip.addr == 192.0.2.10");
   });
 
   it("handles unknown message IDs gracefully", async () => {
-    const unknownMsgOutput = "0.000\t10.0.0.1\t10.0.0.2\t65535\t\t\t\t\t\t\t\n";
+    const unknownMsgOutput = "0.000\t192.0.2.1\t192.0.2.2\t65535\t\t\t\t\t\t\t\n";
     mockTsharkOutput(unknownMsgOutput);
 
     const result = await pcapScppMessages(FAKE_FILE);
@@ -489,8 +489,8 @@ describe("pcapRtpStreams", () => {
     "    Start: 2024-01-15 10:00:00.000",
     "      End: 2024-01-15 10:01:00.000",
     "  Src Addr  Src Port  Dst Addr  Dst Port  SSRC  Payload  Packets  Lost  Max Delta  Max Jitter  Mean Jitter",
-    "  10.0.0.1  20000     10.0.0.2  20002     0xAABBCCDD  0      5000     10    25.3       2.1         0.9",
-    "  10.0.0.2  20002     10.0.0.1  20000     0x11223344  8      4990     5     22.1       1.8         0.7",
+    "  192.0.2.1  20000     192.0.2.2  20002     0xAABBCCDD  0      5000     10    25.3       2.1         0.9",
+    "  192.0.2.2  20002     192.0.2.1  20000     0x11223344  8      4990     5     22.1       1.8         0.7",
     "========================= RTP Streams ========================",
   ].join("\n");
 
@@ -505,8 +505,8 @@ describe("pcapRtpStreams", () => {
     mockTsharkOutput(rtpOutput);
 
     const result = await pcapRtpStreams(FAKE_FILE);
-    expect(result.streams[0]!.src).toBe("10.0.0.1:20000");
-    expect(result.streams[0]!.dst).toBe("10.0.0.2:20002");
+    expect(result.streams[0]!.src).toBe("192.0.2.1:20000");
+    expect(result.streams[0]!.dst).toBe("192.0.2.2:20002");
   });
 
   it("parses SSRC values", async () => {
@@ -589,7 +589,7 @@ describe("pcapProtocolFilter", () => {
   const FAKE_FILE = "/tmp/filter.cap";
 
   it("uses custom fields when provided", async () => {
-    const tsharkOut = "INVITE\t10.0.0.1\t10.0.0.2\n200\t10.0.0.2\t10.0.0.1\n";
+    const tsharkOut = "INVITE\t192.0.2.1\t192.0.2.2\n200\t192.0.2.2\t192.0.2.1\n";
     mockTsharkOutput(tsharkOut);
 
     const result = await pcapProtocolFilter(FAKE_FILE, "sip", [
@@ -601,13 +601,13 @@ describe("pcapProtocolFilter", () => {
     expect(result).toHaveLength(2);
     expect(result[0]).toEqual({
       "sip.Method": "INVITE",
-      "ip.src": "10.0.0.1",
-      "ip.dst": "10.0.0.2",
+      "ip.src": "192.0.2.1",
+      "ip.dst": "192.0.2.2",
     });
   });
 
   it("uses default fields when no fields specified", async () => {
-    const defaultOut = "1\t0.000\t10.0.0.1\t10.0.0.2\teth:ip:udp:sip\t500\n";
+    const defaultOut = "1\t0.000\t192.0.2.1\t192.0.2.2\teth:ip:udp:sip\t500\n";
     mockTsharkOutput(defaultOut);
 
     const result = await pcapProtocolFilter(FAKE_FILE, "sip");
@@ -616,8 +616,8 @@ describe("pcapProtocolFilter", () => {
     expect(result[0]).toEqual({
       "frame.number": "1",
       "frame.time_relative": "0.000",
-      "ip.src": "10.0.0.1",
-      "ip.dst": "10.0.0.2",
+      "ip.src": "192.0.2.1",
+      "ip.dst": "192.0.2.2",
       "frame.protocols": "eth:ip:udp:sip",
       "frame.len": "500",
     });

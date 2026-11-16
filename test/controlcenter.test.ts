@@ -57,7 +57,7 @@ describe('controlcenter', () => {
 
   it('getServiceStatus parses service list', async () => {
     const h = withMockFetch(async () => {
-      const r = await getServiceStatus('10.0.0.1');
+      const r = await getServiceStatus('192.0.2.1');
       expect(r).toHaveLength(3);
       expect(r[0]!.serviceName).toBe('Cisco CallManager');
       expect(r[0]!.serviceStatus).toBe('Started');
@@ -83,7 +83,7 @@ describe('controlcenter', () => {
 
   it('getServiceStatus with service name filter', async () => {
     const h = withMockFetch(async () => {
-      await getServiceStatus('10.0.0.1', ['Cisco CallManager']);
+      await getServiceStatus('192.0.2.1', ['Cisco CallManager']);
     });
 
     await h.run(async (_url, init) => {
@@ -107,7 +107,7 @@ describe('controlcenter', () => {
 </soapenv:Envelope>`;
 
     const h = withMockFetch(async () => {
-      await expect(getServiceStatus('10.0.0.1')).rejects.toThrow(/fault/i);
+      await expect(getServiceStatus('192.0.2.1')).rejects.toThrow(/fault/i);
     });
 
     await h.run(async () =>

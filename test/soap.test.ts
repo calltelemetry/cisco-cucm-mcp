@@ -16,7 +16,7 @@ describe('fetchServiceabilitySoap', () => {
 
     const h = withMockFetch(async () => {
       await expect(
-        fetchServiceabilitySoap('10.0.0.1', 8443, { username: 'u', password: 'p' }, '/test', 'testAction', '<body/>')
+        fetchServiceabilitySoap('192.0.2.1', 8443, { username: 'u', password: 'p' }, '/test', 'testAction', '<body/>')
       ).rejects.toThrow('No file found within the specified time range');
     });
 
@@ -41,7 +41,7 @@ describe('fetchServiceabilitySoap', () => {
 
     const h = withMockFetch(async () => {
       try {
-        await fetchServiceabilitySoap('10.0.0.1', 8443, { username: 'u', password: 'p' }, '/test', 'testAction', '<body/>');
+        await fetchServiceabilitySoap('192.0.2.1', 8443, { username: 'u', password: 'p' }, '/test', 'testAction', '<body/>');
         throw new Error('Should have thrown');
       } catch (e: unknown) {
         const msg = (e as Error).message;
@@ -65,7 +65,7 @@ describe('fetchServiceabilitySoap', () => {
   it('HTTP 500 with non-XML body falls back to raw text', async () => {
     const h = withMockFetch(async () => {
       await expect(
-        fetchServiceabilitySoap('10.0.0.1', 8443, { username: 'u', password: 'p' }, '/test', 'testAction', '<body/>')
+        fetchServiceabilitySoap('192.0.2.1', 8443, { username: 'u', password: 'p' }, '/test', 'testAction', '<body/>')
       ).rejects.toThrow('HTTP 500');
     });
 
@@ -80,7 +80,7 @@ describe('fetchServiceabilitySoap', () => {
   it('HTTP 401 returns status in error', async () => {
     const h = withMockFetch(async () => {
       await expect(
-        fetchServiceabilitySoap('10.0.0.1', 8443, { username: 'u', password: 'p' }, '/test', 'testAction', '<body/>')
+        fetchServiceabilitySoap('192.0.2.1', 8443, { username: 'u', password: 'p' }, '/test', 'testAction', '<body/>')
       ).rejects.toThrow('HTTP 401');
     });
 
@@ -105,7 +105,7 @@ describe('fetchServiceabilitySoap', () => {
 
     const h = withMockFetch(async () => {
       await expect(
-        fetchServiceabilitySoap('10.0.0.1', 8443, { username: 'u', password: 'p' }, '/test', 'testAction', '<body/>')
+        fetchServiceabilitySoap('192.0.2.1', 8443, { username: 'u', password: 'p' }, '/test', 'testAction', '<body/>')
       ).rejects.toThrow('Internal error');
     });
 

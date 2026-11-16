@@ -37,7 +37,7 @@ describe('controlcenter-ext', () => {
 
   it('startService sends ControlType=Start', async () => {
     const h = withMockFetch(async () => {
-      const r = await startService('10.0.0.1', ['Cisco CallManager']);
+      const r = await startService('192.0.2.1', ['Cisco CallManager']);
       expect(r).toHaveLength(1);
       expect(r[0]!.serviceName).toBe('Cisco CallManager');
       expect(r[0]!.serviceStatus).toBe('Started');
@@ -57,7 +57,7 @@ describe('controlcenter-ext', () => {
 
   it('stopService sends ControlType=Stop', async () => {
     const h = withMockFetch(async () => {
-      const r = await stopService('10.0.0.1', ['Cisco CDR Agent']);
+      const r = await stopService('192.0.2.1', ['Cisco CDR Agent']);
       expect(r).toHaveLength(1);
     });
 
@@ -73,7 +73,7 @@ describe('controlcenter-ext', () => {
 
   it('restartService sends ControlType=Restart', async () => {
     const h = withMockFetch(async () => {
-      const r = await restartService('10.0.0.1', ['Cisco CallManager']);
+      const r = await restartService('192.0.2.1', ['Cisco CallManager']);
       expect(r).toHaveLength(1);
     });
 
@@ -116,7 +116,7 @@ describe('controlcenter-ext', () => {
 </soapenv:Envelope>`;
 
     const h = withMockFetch(async () => {
-      const r = await getStaticServiceListExtended('10.0.0.1');
+      const r = await getStaticServiceListExtended('192.0.2.1');
       expect(r).toHaveLength(2);
       expect(r[0]!.serviceName).toBe('Cisco CallManager');
       expect(r[0]!.serviceType).toBe('Service');
@@ -159,7 +159,7 @@ describe('controlcenter-ext', () => {
 </soapenv:Envelope>`;
 
     const h = withMockFetch(async () => {
-      const r = await restartService('10.0.0.1', ['Cisco CallManager', 'Cisco CTIManager']);
+      const r = await restartService('192.0.2.1', ['Cisco CallManager', 'Cisco CTIManager']);
       expect(r).toHaveLength(2);
       expect(r[0]!.serviceName).toBe('Cisco CallManager');
       expect(r[1]!.serviceName).toBe('Cisco CTIManager');
@@ -187,7 +187,7 @@ describe('controlcenter-ext', () => {
 </soapenv:Envelope>`;
 
     const h = withMockFetch(async () => {
-      await expect(startService('10.0.0.1', ['Bad Service'])).rejects.toThrow(/fault/i);
+      await expect(startService('192.0.2.1', ['Bad Service'])).rejects.toThrow(/fault/i);
     });
 
     await h.run(async () =>

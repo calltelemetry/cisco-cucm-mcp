@@ -50,6 +50,8 @@
     "format:check": "prettier --check 'src/**/*.ts' 'test/**/*.ts'",
     "test": "vitest run",
     "test:built-version": "node scripts/check-built-mcp-version.mjs",
+    "scrub:source": "node scripts/source-scan.mjs",
+    "scrub:publish": "node scripts/publish-scrub.mjs",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "validate": "yarn typecheck && yarn lint && yarn test",
