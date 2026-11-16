@@ -1,21 +1,39 @@
+# The filename of this workflow is bound by the npm trusted-publisher entry for
+# @calltelemetry/cisco-cucm-mcp (ADR 0664, ADR 1302): organization calltelemetry,
+# repository cisco-cucm-mcp, workflow publish.yml, no environment. A mismatch is
+# reported by npm as "404 Not Found" on PUT, so do not rename this file without
+# updating the npm entry first.
 name: Publish to npm
 
 on:
   push:
     tags: ['v*']
 
+permissions:
+  contents: read
+
 jobs:
   publish:
-    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    # npm trusted publishing rejects self-hosted runners: keep this on a
+    # GitHub-hosted runner.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
-      contents: write
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing needs npm >= 11.5.1 (ADR 1302).
+      - name: Install trusted-publishing npm client
+        run: npm install --global npm@11.6.2
 
       - name: Enable Corepack
         run: corepack enable
@@ -38,12 +56,40 @@ jobs:
       - name: Source scan and publish scrub (ADR 1032)
         run: yarn scrub:source && yarn scrub:publish
 
-      - name: Publish to npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # No stored npm credential: npm exchanges the GitHub OIDC token for a
+      # short-lived publish credential. The source repository is public, so npm
+      # provenance is allowed. Idempotent: a version that already resolves on the
+      # registry is skipped, so a re-run for the same version is a no-op.
+      - name: Publish with trusted OIDC
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if view=$(npm view "$NAME@$VERSION" version 2>&1); then
+            if [ -n "$view" ]; then
+              echo "$NAME@$VERSION already published, skipping"
+              exit 0
+            fi
+          elif ! printf '%s' "$view" | grep -q 'E404'; then
+            echo "::error::npm view failed for $NAME@$VERSION: $view"
+            exit 1
+          fi
+          npm publish --access public --provenance
 
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+    steps:
       - name: Create GitHub Release
-        run: gh release create "${{ github.ref_name }}" --generate-notes
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists, skipping"
+          else
+            gh release create "$TAG" --generate-notes
+          fi
