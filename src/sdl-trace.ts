@@ -6,7 +6,7 @@
  * analysis — no network calls, no SSH, no SOAP.
  *
  * Example SDL line:
- * 00001234 | 26/02/2026 07:30:00.123 | SdlSig   | DbInfoInd              | waiting           | Oam(1,100,51,1)   | Oam(1,100,59,1)   | 1,100,185,1.2^10.0.0.1^*         | [T:N-H:0,N:1,SEQ:12345,LEN:200,RSEQ:0] CI=12345678 ConnType=6
+ * 00001234 | 26/02/2026 07:30:00.123 | SdlSig   | DbInfoInd              | waiting           | Oam(1,100,51,1)   | Oam(1,100,59,1)   | 1,100,185,1.2^192.0.2.1^*         | [T:N-H:0,N:1,SEQ:12345,LEN:200,RSEQ:0] CI=12345678 ConnType=6
  */
 
 // ---------------------------------------------------------------------------

@@ -229,8 +229,8 @@ describe('disk cache', () => {
 
   it('clearWsdlCache removes all disk cache files', () => {
     // Manually create a fake cache file
-    writeFileSync(join(tmpCacheDir, '10.0.0.1_8443.json'), '{"wsdl":{},"allSchemas":[]}');
-    writeFileSync(join(tmpCacheDir, '10.0.0.2_8443.json'), '{"wsdl":{},"allSchemas":[]}');
+    writeFileSync(join(tmpCacheDir, '192.0.2.1_8443.json'), '{"wsdl":{},"allSchemas":[]}');
+    writeFileSync(join(tmpCacheDir, '192.0.2.2_8443.json'), '{"wsdl":{},"allSchemas":[]}');
     expect(readdirSync(tmpCacheDir).length).toBe(2);
 
     clearWsdlCache();
@@ -238,13 +238,13 @@ describe('disk cache', () => {
   });
 
   it('clearWsdlCache with host+port removes only that entry', () => {
-    writeFileSync(join(tmpCacheDir, '10.0.0.1_8443.json'), '{"wsdl":{},"allSchemas":[]}');
-    writeFileSync(join(tmpCacheDir, '10.0.0.2_8443.json'), '{"wsdl":{},"allSchemas":[]}');
+    writeFileSync(join(tmpCacheDir, '192.0.2.1_8443.json'), '{"wsdl":{},"allSchemas":[]}');
+    writeFileSync(join(tmpCacheDir, '192.0.2.2_8443.json'), '{"wsdl":{},"allSchemas":[]}');
 
-    clearWsdlCache('10.0.0.1', 8443);
+    clearWsdlCache('192.0.2.1', 8443);
 
     const remaining = readdirSync(tmpCacheDir).filter(f => f.endsWith('.json'));
-    expect(remaining).toEqual(['10.0.0.2_8443.json']);
+    expect(remaining).toEqual(['192.0.2.2_8443.json']);
   });
 
   it('clearWsdlCache does not throw for empty dir', () => {

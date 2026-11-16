@@ -14,7 +14,7 @@ import {
 function makeRecord(overrides: Partial<CaptureStateRecord> = {}): CaptureStateRecord {
   return {
     id: "test-1",
-    host: "10.0.0.1",
+    host: "192.0.2.1",
     startedAt: new Date().toISOString(),
     iface: "eth0",
     fileBase: "cap",

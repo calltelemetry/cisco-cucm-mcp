@@ -16,7 +16,7 @@ describe('packetCapture', () => {
       fileBase: 'packets',
       count: 1000,
       size: 'all',
-      hostFilterIp: '10.0.0.1',
+      hostFilterIp: '192.0.2.1',
       portFilter: 5060,
     });
     expect(cmd).toContain('utils network capture eth0');
@@ -24,7 +24,7 @@ describe('packetCapture', () => {
     expect(cmd).toContain('count 1000');
     expect(cmd).toContain('size all');
     expect(cmd).toContain('port 5060');
-    expect(cmd).toContain('host ip 10.0.0.1');
+    expect(cmd).toContain('host ip 192.0.2.1');
   });
 
   it('remoteCapturePath uses platform/cli', () => {

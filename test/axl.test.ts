@@ -27,8 +27,8 @@ describe('axl', () => {
 </soapenv:Envelope>`;
 
     const h = withMockFetch(async () => {
-      const r = await updatePhonePacketCapture('192.168.125.10', {
-        deviceName: 'SEP505C885DF37F',
+      const r = await updatePhonePacketCapture('198.51.100.10', {
+        deviceName: 'SEP001122334403',
         mode: 'Batch Processing Mode',
         durationSeconds: 60,
       });
@@ -58,8 +58,8 @@ describe('axl', () => {
 </soapenv:Envelope>`;
 
     const h = withMockFetch(async () => {
-      const r = await applyPhone('192.168.125.10', {
-        deviceName: 'SEP505C885DF37F',
+      const r = await applyPhone('198.51.100.10', {
+        deviceName: 'SEP001122334403',
       });
       expect(r.returnValue).toBe('abc');
     });
@@ -84,8 +84,8 @@ describe('axl', () => {
 
     const h = withMockFetch(async () => {
       await expect(
-        updatePhonePacketCapture('192.168.125.10', {
-          deviceName: 'SEP505C885DF37F',
+        updatePhonePacketCapture('198.51.100.10', {
+          deviceName: 'SEP001122334403',
           mode: 'Batch Processing Mode',
           durationSeconds: 60,
         })
@@ -106,10 +106,10 @@ describe('axl', () => {
     expect(isSupportedCucmVersion('14.0')).toBe(true);
     expect(isSupportedCucmVersion('99.9')).toBe(false);
 
-    const target1 = resolveAxlTarget('cucm.lab.local', 8443, '11.5');
+    const target1 = resolveAxlTarget('cucm.example.com', 8443, '11.5');
     expect(target1.version).toBe('11.5');
 
-    const target2 = resolveAxlTarget('cucm.lab.local');
+    const target2 = resolveAxlTarget('cucm.example.com');
     expect(target2.version).toBe('15.0');
   });
 });

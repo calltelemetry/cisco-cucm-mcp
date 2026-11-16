@@ -25,7 +25,7 @@ export type CertificateInfo = {
  * Unit: tomcat
  * Type: own
  * Name: tomcat
- * Issuer: CN=cucm-pub.lab.local
+ * Issuer: CN=cucm-pub.example.com
  * Expires: Thu Jan 30 00:53:07 UTC 2030
  * ```
  */

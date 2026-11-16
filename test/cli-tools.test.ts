@@ -42,15 +42,15 @@ describe('parseShowNetworkCluster', () => {
   it('parses CUCM 15 cluster output with ID column', () => {
     const output = `ID     Hostname              IPv4               IPv6         Type        Hub/Spoke    TFTP
 ==     ========              ====               ====         ====        =========    ====
-1      cucm-pub              192.168.1.10                    Publisher   Hub          Y
-2      cucm-sub1             192.168.1.11                    Subscriber  Hub          N
-3      cucm-sub2             192.168.1.12                    Subscriber  Spoke        N`;
+1      cucm-pub              203.0.113.10                    Publisher   Hub          Y
+2      cucm-sub1             203.0.113.11                    Subscriber  Hub          N
+3      cucm-sub2             203.0.113.12                    Subscriber  Spoke        N`;
 
     const nodes = parseShowNetworkCluster(output);
     expect(nodes).toHaveLength(3);
     expect(nodes[0]!.id).toBe('1');
     expect(nodes[0]!.hostname).toBe('cucm-pub');
-    expect(nodes[0]!.ipAddress).toBe('192.168.1.10');
+    expect(nodes[0]!.ipAddress).toBe('203.0.113.10');
     expect(nodes[0]!.type).toBe('Publisher');
     expect(nodes[0]!.hubOrSpoke).toBe('Hub');
     expect(nodes[1]!.hostname).toBe('cucm-sub1');
@@ -61,16 +61,16 @@ describe('parseShowNetworkCluster', () => {
   it('parses single-node cluster', () => {
     const output = `ID     Hostname              IPv4               IPv6         Type        Hub/Spoke    TFTP
 ==     ========              ====               ====         ====        =========    ====
-1      cucm15-pub            10.0.0.1                        Publisher   Hub          Y`;
+1      cucm15-pub            192.0.2.1                        Publisher   Hub          Y`;
 
     const nodes = parseShowNetworkCluster(output);
     expect(nodes).toHaveLength(1);
     expect(nodes[0]!.hostname).toBe('cucm15-pub');
-    expect(nodes[0]!.ipAddress).toBe('10.0.0.1');
+    expect(nodes[0]!.ipAddress).toBe('192.0.2.1');
   });
 
   it('parses CUCM 15 headerless format (IP-first, space-separated)', () => {
-    const output = `192.168.125.10 cucm15-cluster1.calltelemetry.local cucm15-cluster1 Publisher callmanager DBPub authenticated
+    const output = `198.51.100.10 cucm15-cluster1.example.com cucm15-cluster1 Publisher callmanager DBPub authenticated
 
 Server Table (processnode) Entries
 ----------------------------------
@@ -78,7 +78,7 @@ cucm15-cluster1`;
 
     const nodes = parseShowNetworkCluster(output);
     expect(nodes).toHaveLength(1);
-    expect(nodes[0]!.ipAddress).toBe('192.168.125.10');
+    expect(nodes[0]!.ipAddress).toBe('198.51.100.10');
     expect(nodes[0]!.hostname).toBe('cucm15-cluster1');
     expect(nodes[0]!.type).toBe('Publisher');
     expect(nodes[0]!.replicationStatus).toBe('authenticated');
@@ -92,8 +92,8 @@ cucm15-cluster1`;
   it('handles Server header variant', () => {
     const output = `Server     Address         Type
 ------     -------         ----
-1          192.168.1.10    Publisher
-2          192.168.1.11    Subscriber`;
+1          203.0.113.10    Publisher
+2          203.0.113.11    Subscriber`;
 
     const nodes = parseShowNetworkCluster(output);
     expect(nodes).toHaveLength(2);
@@ -152,30 +152,30 @@ Boot                : 1000 MB total, 500 MB used (50%)`;
 describe('parseShowNetworkEth0', () => {
   it('parses basic network info', () => {
     const output = `DHCP        : disabled
-IP Address  : 192.168.125.10
+IP Address  : 198.51.100.10
 IP Mask     : 255.255.255.0
 Link Detected: yes
 Speed       : 10000Mb/s
 Duplex      : Full
-Gateway     : 192.168.125.1`;
+Gateway     : 198.51.100.1`;
 
     const r = parseShowNetworkEth0(output);
     expect(r.dhcp).toBe('disabled');
-    expect(r.ipAddress).toBe('192.168.125.10');
+    expect(r.ipAddress).toBe('198.51.100.10');
     expect(r.ipMask).toBe('255.255.255.0');
     expect(r.linkDetected).toBe('yes');
     expect(r.speed).toBe('10000Mb/s');
     expect(r.duplex).toBe('Full');
-    expect(r.gateway).toBe('192.168.125.1');
+    expect(r.gateway).toBe('198.51.100.1');
   });
 
   it('parses DNS section', () => {
     const output = `DNS
-  Primary   : 192.168.125.1
+  Primary   : 198.51.100.1
   Secondary : 8.8.8.8`;
 
     const r = parseShowNetworkEth0(output);
-    expect(r.dnsPrimary).toBe('192.168.125.1');
+    expect(r.dnsPrimary).toBe('198.51.100.1');
     expect(r.dnsSecondary).toBe('8.8.8.8');
   });
 
@@ -190,12 +190,12 @@ Gateway     : 192.168.125.1`;
   });
 
   it('handles missing optional fields', () => {
-    const output = `IP Address  : 10.0.0.5
-Gateway     : 10.0.0.1`;
+    const output = `IP Address  : 192.0.2.5
+Gateway     : 192.0.2.1`;
 
     const r = parseShowNetworkEth0(output);
-    expect(r.ipAddress).toBe('10.0.0.5');
-    expect(r.gateway).toBe('10.0.0.1');
+    expect(r.ipAddress).toBe('192.0.2.5');
+    expect(r.gateway).toBe('192.0.2.1');
     expect(r.dhcp).toBe('');
     expect(r.speed).toBe('');
   });

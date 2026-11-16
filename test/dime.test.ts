@@ -39,7 +39,7 @@ describe('dime', () => {
     ]);
 
     const h = withMockFetch(async () => {
-      const r = await listNodeServiceLogs('192.168.125.10');
+      const r = await listNodeServiceLogs('198.51.100.10');
       expect(r).toHaveLength(1);
       expect(r[0]?.server).toBe('node-a');
       expect(r[0]?.count).toBe(2);
@@ -90,7 +90,7 @@ describe('dime', () => {
     ]);
 
     const h = withMockFetch(async () => {
-      const r = await selectLogs('192.168.125.10', {
+      const r = await selectLogs('198.51.100.10', {
         serviceLogs: ['Cisco CallManager'],
         fromDate: '10/04/22 11:00 AM',
         toDate: '10/04/22 11:05 AM',
@@ -140,7 +140,7 @@ describe('dime', () => {
     ]);
 
     const h = withMockFetch(async () => {
-      const r = await selectLogs('192.168.125.10', {
+      const r = await selectLogs('198.51.100.10', {
         systemLogs: ['Syslog'],
         fromDate: '10/04/22 11:00 AM',
         toDate: '10/04/22 11:05 AM',
@@ -169,7 +169,7 @@ describe('dime', () => {
     ]);
 
     const h = withMockFetch(async () => {
-      const r = await getOneFile('192.168.125.10', '/var/log/active/x.txt');
+      const r = await getOneFile('198.51.100.10', '/var/log/active/x.txt');
       expect([...r.data]).toEqual([10, 20, 30]);
     });
 
@@ -208,8 +208,8 @@ describe('selectLogsCluster', () => {
     vi.doMock('../src/cli-tools.js', () => ({
       showNetworkCluster: vi.fn().mockResolvedValue({
         nodes: [
-          { id: '1', hostname: 'pub', ipAddress: '10.0.0.1', ipv6Address: '', type: 'Publisher', hubOrSpoke: 'Hub', replicationStatus: '' },
-          { id: '2', hostname: 'sub1', ipAddress: '10.0.0.2', ipv6Address: '', type: 'Subscriber', hubOrSpoke: 'Hub', replicationStatus: '' },
+          { id: '1', hostname: 'pub', ipAddress: '192.0.2.1', ipv6Address: '', type: 'Publisher', hubOrSpoke: 'Hub', replicationStatus: '' },
+          { id: '2', hostname: 'sub1', ipAddress: '192.0.2.2', ipv6Address: '', type: 'Subscriber', hubOrSpoke: 'Hub', replicationStatus: '' },
         ],
         raw: '',
       }),
@@ -246,13 +246,13 @@ describe('selectLogsCluster', () => {
     let callCount = 0;
     const h = withMockFetch(async () => {
       const result = await clusterFn(
-        '10.0.0.1',
+        '192.0.2.1',
         60,
         { serviceLogs: ['Cisco CallManager'] },
         { auth: { username: 'u', password: 'p' }, sshAuth: { username: 'u', password: 'p' } },
       );
 
-      // Should have results for both nodes (10.0.0.1 is both publisher and node[0])
+      // Should have results for both nodes (192.0.2.1 is both publisher and node[0])
       expect(result.nodes.length).toBeGreaterThanOrEqual(2);
       const allFiles = result.nodes.flatMap((n) => n.files);
       expect(allFiles.length).toBeGreaterThanOrEqual(2);
@@ -274,8 +274,8 @@ describe('selectLogsCluster', () => {
     vi.doMock('../src/cli-tools.js', () => ({
       showNetworkCluster: vi.fn().mockResolvedValue({
         nodes: [
-          { id: '1', hostname: 'pub', ipAddress: '10.0.0.1', ipv6Address: '', type: 'Publisher', hubOrSpoke: 'Hub', replicationStatus: '' },
-          { id: '2', hostname: 'sub1', ipAddress: '10.0.0.99', ipv6Address: '', type: 'Subscriber', hubOrSpoke: 'Hub', replicationStatus: '' },
+          { id: '1', hostname: 'pub', ipAddress: '192.0.2.1', ipv6Address: '', type: 'Publisher', hubOrSpoke: 'Hub', replicationStatus: '' },
+          { id: '2', hostname: 'sub1', ipAddress: '192.0.2.99', ipv6Address: '', type: 'Subscriber', hubOrSpoke: 'Hub', replicationStatus: '' },
         ],
         raw: '',
       }),
@@ -311,7 +311,7 @@ describe('selectLogsCluster', () => {
     let callCount = 0;
     const h = withMockFetch(async () => {
       const result = await clusterFn(
-        '10.0.0.1',
+        '192.0.2.1',
         60,
         { serviceLogs: ['Cisco CallManager'] },
         { auth: { username: 'u', password: 'p' }, sshAuth: { username: 'u', password: 'p' } },

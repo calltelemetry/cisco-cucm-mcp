@@ -81,7 +81,7 @@ export type ClusterNode = {
  * Parse `show network cluster` output from CUCM CLI.
  * Output is a fixed-width table with headers like:
  *   ID     Hostname              IPv4               IPv6         Type      Hub/Spoke    TFTP  ...
- *   1      cucm-pub              10.0.0.1                        Publisher  Hub          N     ...
+ *   1      cucm-pub              192.0.2.1                        Publisher  Hub          N     ...
  */
 export function parseShowNetworkCluster(stdout: string): ClusterNode[] {
   const lines = stdout.split("\n");
@@ -392,14 +392,14 @@ export function parseShowNetworkEth0(stdout: string): NetworkEth0 {
       } else if (key === "ip address" || key === "address") {
         ipAddress = value;
         inDns = false;
-        // CUCM 15: "IP Address : 192.168.125.10     IP Mask : 255.255.255.000"
+        // CUCM 15: "IP Address : 198.51.100.10     IP Mask : 255.255.255.000"
         const maskMatch = rawValue.match(/IP\s*Mask\s*:\s*(\S+)/i);
         if (maskMatch && !ipMask) ipMask = maskMatch[1]!;
       } else if (key === "ip mask" || key === "mask") {
         ipMask = value;
         inDns = false;
       } else if (key === "gateway") {
-        // "Gateway : 192.168.125.1 on Ethernet 0" → just the IP
+        // "Gateway : 198.51.100.1 on Ethernet 0" → just the IP
         const gwIp = value.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
         gateway = gwIp ? gwIp[1]! : value;
         inDns = false;
@@ -420,7 +420,7 @@ export function parseShowNetworkEth0(stdout: string): NetworkEth0 {
       } else if (key === "dns") {
         inDns = true;
       } else if (inDns && key === "primary") {
-        // CUCM 15: "Primary : 192.168.68.125     Secondary : Not Configured"
+        // CUCM 15: "Primary : 203.0.113.125     Secondary : Not Configured"
         dnsPrimary = value;
         const secMatch = rawValue.match(/Secondary\s*:\s*(\S+)/i);
         if (secMatch && !dnsSecondary) {

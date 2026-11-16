@@ -202,7 +202,7 @@ server.tool(
     cucm_version: cucmVersionSchema,
     axlVersion: cucmVersionSchema.describe("Deprecated alias for cucm_version"),
     auth: axlAuthSchema.describe("AXL auth (optional; defaults to CUCM_USERNAME/CUCM_PASSWORD)"),
-    deviceName: z.string().min(1).describe("Phone device name (e.g. SEP505C885DF37F)"),
+    deviceName: z.string().min(1).describe("Phone device name (e.g. SEP001122334403)"),
     mode: z
       .string()
       .optional()
@@ -521,7 +521,7 @@ server.tool(
       .optional().describe("Registration status filter (default Any)"),
     selectBy: z.enum(["Name", "IPV4Address", "IPV6Address", "DirNumber", "Description", "SIPStatus"])
       .optional().describe("Search field (default Name)"),
-    selectItems: z.array(z.string()).optional().describe('Search values (* = wildcard, e.g. ["SEP*"] or ["192.168.1.*"])'),
+    selectItems: z.array(z.string()).optional().describe('Search values (* = wildcard, e.g. ["SEP*"] or ["203.0.113.*"])'),
     protocol: z.enum(["Any", "SIP", "SCCP", "Unknown"]).optional().describe("Protocol filter (default Any)"),
     stateInfo: z.string().optional().describe("Pagination cursor from a previous response. Omit for first page."),
     timeoutMs: z.number().int().min(1000).max(120_000).optional().describe("Request timeout (default 60000, RIS can be slow on large clusters)"),
@@ -546,7 +546,7 @@ server.tool(
     host: z.string().describe("CUCM host/IP"),
     port: z.number().int().min(1).max(65535).optional(),
     auth: dimeAuthSchema,
-    ipAddress: z.string().min(1).describe("IP address to search (e.g. 192.168.1.100 or 192.168.1.*)"),
+    ipAddress: z.string().min(1).describe("IP address to search (e.g. 203.0.113.100 or 203.0.113.*)"),
     maxDevices: z.number().int().min(1).max(2000).optional(),
     status: z.enum(["Any", "Registered", "UnRegistered", "Rejected", "PartiallyRegistered", "Unknown"]).optional(),
     timeoutMs: z.number().int().min(1000).max(120_000).optional(),
@@ -584,7 +584,7 @@ server.tool(
       .optional().describe("Registration status filter (default Any)"),
     selectBy: z.enum(["Name", "IPV4Address", "IPV6Address", "DirNumber", "Description", "SIPStatus"])
       .optional().describe("Search field (default Name)"),
-    selectItems: z.array(z.string()).optional().describe('Search values (* = wildcard, e.g. ["SEP*"] or ["192.168.1.*"])'),
+    selectItems: z.array(z.string()).optional().describe('Search values (* = wildcard, e.g. ["SEP*"] or ["203.0.113.*"])'),
     protocol: z.enum(["Any", "SIP", "SCCP", "Unknown"]).optional().describe("Protocol filter (default Any)"),
     timeoutMs: z.number().int().min(1000).max(120_000).optional().describe("Request timeout per page (default 60000)"),
   },
@@ -1261,7 +1261,7 @@ server.tool(
 
 server.tool(
   "perfmon_add_counter",
-  "Add counters to a PerfMon session. Counter paths use the format: \\\\host\\Object\\Counter (e.g. \\\\192.168.1.1\\Cisco CallManager\\CallsActive).",
+  "Add counters to a PerfMon session. Counter paths use the format: \\\\host\\Object\\Counter (e.g. \\\\203.0.113.1\\Cisco CallManager\\CallsActive).",
   {
     host: z.string().describe("CUCM API host/IP"),
     port: z.number().int().min(1).max(65535).optional(),
@@ -2007,7 +2007,7 @@ server.tool(
   {
     host: z.string().describe("CUCM IP or hostname"),
     auth: coordAuthSchema,
-    deviceName: z.string().describe("Phone device name, e.g. SEP505C885DF37F"),
+    deviceName: z.string().describe("Phone device name, e.g. SEP001122334403"),
     fileBase: z.string().optional().describe("Base name for CUCM capture file (default: cap_<deviceName>_<timestamp>)"),
     phoneCaptureDurationSeconds: z.number().int().min(10).max(3600).optional().describe("How long the phone EPC runs in seconds (default: 60)"),
     dimePort: z.number().int().min(1).max(65535).optional().describe("DIME port (default: 8443)"),
@@ -2040,7 +2040,7 @@ server.tool(
     coordId: z.string().optional().describe("coordId from coordinated_capture_start (optional if providing cucmCaptureId directly)"),
     cucmCaptureId: z.string().optional().describe("CUCM capture session ID (from coordinated_capture_start cucmCaptureId field)"),
     host: z.string().optional().describe("CUCM IP (required if not derivable from state)"),
-    deviceName: z.string().optional().describe("Phone device name (e.g. SEP505C885DF37F)"),
+    deviceName: z.string().optional().describe("Phone device name (e.g. SEP001122334403)"),
     phoneIp: z.string().optional().describe("Phone IP address (used to scope analysis)"),
     phoneCaptureFileCandidates: z.array(z.string()).optional().describe("Override TFTP candidate paths for phone EPC file"),
     dimePort: z.number().int().min(1).max(65535).optional(),
@@ -2075,7 +2075,7 @@ server.tool(
   "Standalone tool to download a phone's Embedded Packet Capture (EPC) file from CUCM's TFTP directory. Tries multiple candidate paths (CUCM version dependent). Use after a phone EPC session has been manually enabled or after coordinated_capture_start without a paired stop.",
   {
     host: z.string().describe("CUCM IP or hostname"),
-    deviceName: z.string().describe("Phone device name, e.g. SEP505C885DF37F"),
+    deviceName: z.string().describe("Phone device name, e.g. SEP001122334403"),
     dimePort: z.number().int().min(1).max(65535).optional().describe("DIME port (default: 8443)"),
     auth: coordAuthSchema,
     outFile: z.string().optional().describe("Override output file path (default: /tmp/cucm-mcp/<DEVICE>_epc_<ts>.cap)"),

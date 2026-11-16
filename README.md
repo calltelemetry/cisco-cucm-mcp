@@ -338,7 +338,7 @@ All examples below are real interactions with a live CUCM 15.0.1 cluster, showin
 <details><summary>Tool call: <code>show_version</code></summary>
 
 ```json
-{ "host": "192.168.125.10" }
+{ "host": "198.51.100.10" }
 ```
 
 ```json
@@ -365,7 +365,7 @@ The LLM calls three tools in parallel to assess system health:
 <details><summary>Tool call: <code>show_status</code> — CPU, memory, disk</summary>
 
 ```json
-{ "host": "192.168.125.10" }
+{ "host": "198.51.100.10" }
 ```
 
 ```json
@@ -388,7 +388,7 @@ The LLM calls three tools in parallel to assess system health:
 <details><summary>Tool call: <code>show_network_cluster</code> — topology + replication</summary>
 
 ```json
-{ "host": "192.168.125.10" }
+{ "host": "198.51.100.10" }
 ```
 
 ```json
@@ -396,7 +396,7 @@ The LLM calls three tools in parallel to assess system health:
   "nodes": [
     {
       "hostname": "cucm15-cluster1",
-      "ipAddress": "192.168.125.10",
+      "ipAddress": "198.51.100.10",
       "type": "Publisher",
       "replicationStatus": "authenticated"
     }
@@ -409,7 +409,7 @@ The LLM calls three tools in parallel to assess system health:
 <details><summary>Tool call: <code>get_service_status</code> — 81 services</summary>
 
 ```json
-{ "host": "192.168.125.10" }
+{ "host": "198.51.100.10" }
 ```
 
 ```json
@@ -445,7 +445,7 @@ The LLM calls three tools in parallel to assess system health:
 
 ```json
 {
-  "host": "192.168.125.10",
+  "host": "198.51.100.10",
   "deviceClass": "Phone",
   "status": "Any",
   "selectItems": ["*"]
@@ -461,8 +461,8 @@ The LLM calls three tools in parallel to assess system health:
       "returnCode": "Ok",
       "devices": [
         {
-          "name": "SEP000832C78E0F",
-          "ipAddress": "192.168.125.85",
+          "name": "SEP001122334401",
+          "ipAddress": "198.51.100.85",
           "description": "Auto 1001",
           "dirNumber": "1001",
           "status": "Registered",
@@ -470,8 +470,8 @@ The LLM calls three tools in parallel to assess system health:
           "activeLoadId": "sip78xx.14-3-1-0001-60"
         },
         {
-          "name": "SEP0022905C7710",
-          "ipAddress": "192.168.125.178",
+          "name": "SEP001122334402",
+          "ipAddress": "198.51.100.178",
           "description": "Auto 1000 7975 Phone3",
           "dirNumber": "1000",
           "status": "Registered",
@@ -479,8 +479,8 @@ The LLM calls three tools in parallel to assess system health:
           "activeLoadId": "SCCP75.9-4-2SR4-3S"
         },
         {
-          "name": "SEP505C885DF37F",
-          "ipAddress": "192.168.125.234",
+          "name": "SEP001122334403",
+          "ipAddress": "198.51.100.234",
           "description": "Auto 1003 9841",
           "dirNumber": "1003",
           "status": "Registered",
@@ -499,9 +499,9 @@ The LLM calls three tools in parallel to assess system health:
 >
 > | Phone | DN | IP | Protocol | Firmware |
 > |-------|----|----|----------|----------|
-> | SEP000832C78E0F (7821) | 1001 | 192.168.125.85 | SIP | sip78xx.14-3-1 |
-> | SEP0022905C7710 (7975) | 1000 | 192.168.125.178 | SCCP | SCCP75.9-4-2SR4 |
-> | SEP505C885DF37F (9841) | 1003 | 192.168.125.234 | SIP | PHONEOS.3-2-1 |
+> | SEP001122334401 (7821) | 1001 | 198.51.100.85 | SIP | sip78xx.14-3-1 |
+> | SEP001122334402 (7975) | 1000 | 198.51.100.178 | SCCP | SCCP75.9-4-2SR4 |
+> | SEP001122334403 (9841) | 1003 | 198.51.100.234 | SIP | PHONEOS.3-2-1 |
 >
 > No unregistered or rejected devices found.
 
@@ -514,7 +514,7 @@ The LLM calls three tools in parallel to assess system health:
 <details><summary>Tool call: <code>cert_list</code> — SSH CLI</summary>
 
 ```json
-{ "host": "192.168.125.10", "type": "own" }
+{ "host": "198.51.100.10", "type": "own" }
 ```
 
 ```json
@@ -555,7 +555,7 @@ The LLM chains multiple tools — starting a packet capture, then analyzing the 
 
 ```json
 {
-  "host": "192.168.125.10",
+  "host": "198.51.100.10",
   "portFilter": 5060,
   "count": 5000
 }
@@ -579,7 +579,7 @@ The LLM chains multiple tools — starting a packet capture, then analyzing the 
 
 ```json
 {
-  "host": "192.168.125.10",
+  "host": "198.51.100.10",
   "captureId": "c2439a09-b082-4c91-ba1e-20b211f1a217"
 }
 ```
@@ -604,9 +604,9 @@ The LLM chains multiple tools — starting a packet capture, then analyzing the 
 {
   "calls": [
     {
-      "callId": "6e51c0-60e94629-6-64257ec0@192.168.125.10",
-      "from": "\"1000\" <sip:1000@192.168.125.10>",
-      "to": "<sip:1001@192.168.125.10>",
+      "callId": "6e51c0-60e94629-6-64257ec0@198.51.100.10",
+      "from": "\"1000\" <sip:1000@198.51.100.10>",
+      "to": "<sip:1001@198.51.100.10>",
       "messages": [
         { "method": "INVITE",  "timestamp": "18:25:56.742" },
         { "status": "100 Trying",  "timestamp": "18:25:56.743" },
@@ -635,8 +635,8 @@ The LLM chains multiple tools — starting a packet capture, then analyzing the 
 {
   "streams": [
     {
-      "src": "192.168.125.85:29390",
-      "dst": "192.168.125.10:28770",
+      "src": "198.51.100.85:29390",
+      "dst": "198.51.100.10:28770",
       "codec": "PCMU (G.711 u-law)",
       "packets": 748,
       "lost": 0,
@@ -669,7 +669,7 @@ The LLM chains multiple tools — starting a packet capture, then analyzing the 
 
 ```json
 {
-  "host": "192.168.125.10",
+  "host": "198.51.100.10",
   "serviceLogs": ["Cisco CallManager"],
   "minutesBack": 60
 }
@@ -745,9 +745,9 @@ The LLM chains multiple tools — starting a packet capture, then analyzing the 
 ```json
 {
   "phone": [
-    { "name": "SEP0022905C7710", "model": "Cisco 7975",  "description": "Auto 1000 7975 Phone3" },
-    { "name": "SEP000832C78E0F", "model": "Cisco 7821",  "description": "Auto 1001" },
-    { "name": "SEP505C885DF37F", "model": "Cisco 9841",  "description": "Auto 1003 9841" }
+    { "name": "SEP001122334402", "model": "Cisco 7975",  "description": "Auto 1000 7975 Phone3" },
+    { "name": "SEP001122334401", "model": "Cisco 7821",  "description": "Auto 1001" },
+    { "name": "SEP001122334403", "model": "Cisco 9841",  "description": "Auto 1003 9841" }
   ]
 }
 ```
@@ -758,9 +758,9 @@ The LLM chains multiple tools — starting a packet capture, then analyzing the 
 >
 > | Device | Model | Description |
 > |--------|-------|-------------|
-> | SEP0022905C7710 | Cisco 7975 | Auto 1000 7975 Phone3 |
-> | SEP000832C78E0F | Cisco 7821 | Auto 1001 |
-> | SEP505C885DF37F | Cisco 9841 | Auto 1003 9841 |
+> | SEP001122334402 | Cisco 7975 | Auto 1000 7975 Phone3 |
+> | SEP001122334401 | Cisco 7821 | Auto 1001 |
+> | SEP001122334403 | Cisco 9841 | Auto 1003 9841 |
 >
 > Via `axl_execute` you can run any AXL operation — `getPhone`, `updatePhone`, `addPhone`, `removePhone`, `listPhone`. Use `axl_describe_operation` to see required fields for any operation.
 

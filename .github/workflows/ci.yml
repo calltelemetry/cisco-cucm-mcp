@@ -27,6 +27,11 @@ jobs:
       - name: Audit production dependencies
         run: yarn npm audit --environment production || true
 
+      # Public repo: every tracked file is a disclosure channel (ADR 1032).
+      # Internal addresses and hostnames fail here; RFC 5737 ranges are allowed.
+      - name: Source scan for internal identifiers (ADR 1032)
+        run: yarn scrub:source
+
       - name: Type check
         run: yarn typecheck
 
@@ -47,3 +52,11 @@ jobs:
 
       - name: Verify built MCP version
         run: yarn test:built-version
+
+      - name: Publish scrub gate (ADR 1032)
+        run: yarn scrub:publish
+
+      # Proves the package packs and passes npm's publish-time checks on every
+      # PR and merge-queue run, without touching the registry or any credential.
+      - name: Publish dry run
+        run: npm publish --dry-run --ignore-scripts --access public --provenance=false

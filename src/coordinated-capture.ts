@@ -214,7 +214,7 @@ export async function coordinatedCaptureStart(
     phoneCaptureDurationSeconds = 60,
   } = args;
 
-  if (!deviceName?.trim()) throw new Error("deviceName is required (e.g. SEP505C885DF37F)");
+  if (!deviceName?.trim()) throw new Error("deviceName is required (e.g. SEP001122334403)");
 
   // Step 1: RIS lookup → phone IP
   const phoneIp = await resolvePhoneIp(host, deviceName, auth, risPort ?? dimePort);
