@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-11-27
+
 ### Changed
 
 - Examples, README and tests now use RFC 5737 documentation addresses and `example.com` names instead of lab addresses and hostnames.
